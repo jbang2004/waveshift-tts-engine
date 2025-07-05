@@ -26,8 +26,8 @@ class MyIndexTTSDeployment:
     """
     def __init__(self, config=None):
         # 确保在新进程中可以正确导入indextts模块
-        backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        indextts_dir = os.path.join(backend_dir, 'models', 'IndexTTS')
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        indextts_dir = os.path.join(project_dir, 'models', 'IndexTTS')
         if indextts_dir not in sys.path:
             sys.path.insert(0, indextts_dir)
             logger.info(f"添加indextts模块路径: {indextts_dir}")
@@ -41,7 +41,7 @@ class MyIndexTTSDeployment:
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         # 定义模型和配置路径
-        checkpoints_dir = os.path.join(backend_dir, 'models', 'IndexTTS', 'checkpoints')
+        checkpoints_dir = os.path.join(project_dir, 'models', 'IndexTTS', 'checkpoints')
         cfg_path = os.path.join(checkpoints_dir, 'config.yaml')
         model_dir = checkpoints_dir
         

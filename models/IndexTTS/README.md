@@ -18,13 +18,14 @@
 <span style="font-size:16px;">  
 Experience **IndexTTS**: Please contact <u>xuanwu@bilibili.com</u> for more detailed information. </span>
 ### Contact
-QQ群：553460296 \
+QQ群（二群）：1048202584 \
 Discord：https://discord.gg/uT32E7KDmy  \
 简历：indexspeech@bilibili.com  \
 欢迎大家来交流讨论！
 ## 📣 Updates
 
-- `2025/03/25` 🔥🔥 We release the model parameters and inference code.
+- `2025/05/14` 🔥🔥 We release the **IndexTTS-1.5**, Significantly improve the model's stability and its performance in the English language.
+- `2025/03/25` 🔥 We release IndexTTS-1.0 model parameters and inference code.
 - `2025/02/12` 🔥 We submitted our paper on arXiv, and released our demos and test sets.
 
 ## 🖥️ Method
@@ -44,9 +45,10 @@ The main improvements and contributions are summarized as follows:
 
 
 ## Model Download
-| **HuggingFace**                                          | **ModelScope** |
+| 🤗**HuggingFace**                                          | **ModelScope** |
 |----------------------------------------------------------|----------------------------------------------------------|
-| [😁IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) |
+| [IndexTTS](https://huggingface.co/IndexTeam/Index-TTS) | [IndexTTS](https://modelscope.cn/models/IndexTeam/Index-TTS) |
+| [😁IndexTTS-1.5](https://huggingface.co/IndexTeam/IndexTTS-1.5) | [IndexTTS-1.5](https://modelscope.cn/models/IndexTeam/IndexTTS-1.5) |
 
 
 ## 📑 Evaluation
@@ -56,14 +58,15 @@ The main improvements and contributions are summarized as follows:
 | **WER**                | **test_zh** | **test_en** | **test_hard** |
 |:----------------------:|:-----------:|:-----------:|:-------------:|
 | **Human**              | 1.26        | 2.14        | -             |
-| **SeedTTS**            | 1.002       | 1.945       | **6.243**         |
+| **SeedTTS**            | 1.002       | 1.945       | **6.243**     |
 | **CosyVoice 2**        | 1.45        | 2.57        | 6.83          |
 | **F5TTS**              | 1.56        | 1.83        | 8.67          |
 | **FireRedTTS**         | 1.51        | 3.82        | 17.45         |
 | **MaskGCT**            | 2.27        | 2.62        | 10.27         |
 | **Spark-TTS**          | 1.2         | 1.98        | -             |
-| **MegaTTS 3**          | 1.36        | **1.82**        | -             |
-| **IndexTTS**           | **0.937**       | 1.936       | 6.831         |
+| **MegaTTS 3**          | 1.36        | 1.82        | -             |
+| **IndexTTS**           | 0.937       | 1.936       | 6.831         |
+| **IndexTTS-1.5**       | **0.821**   | **1.606**   | 6.565         |
 
 
 **Word Error Rate (WER) Results for IndexTTS and Baseline Models on the other opensource test**
@@ -77,7 +80,8 @@ The main improvements and contributions are summarized as follows:
 |  **Fishspeech** |        2.4        |            11.4            |            8.8             |            8.0             |   8.3    |
 |  **FireRedTTS** |        2.2        |            11.0            |            16.3            |            5.7             |   7.7    |
 |     **XTTS**    |        3.0        |            11.4            |            7.1             |            3.5             |   6.0    |
-|   **IndexTTS**  |      **1.3**     |          **7.0**          |          **5.3**          |          **2.1**          | **3.7** |
+|   **IndexTTS**  |      1.3          |          7.0               |            5.3             |          2.1             | 3.7       |
+|   **IndexTTS-1.5**  |      **1.2**     |          **6.8**          |          **3.9**          |          **1.7**          | **3.1** |
 
 
 **Speaker Similarity (SS) Results for IndexTTS and Baseline Models**
@@ -91,6 +95,7 @@ The main improvements and contributions are summarized as follows:
 |  **FireRedTTS** |       0.579       |            0.593           |            0.587           |            0.698           |   0.631   |
 |     **XTTS**    |       0.573       |            0.586           |            0.648           |            0.761           |   0.663   |
 |   **IndexTTS**  |       0.744       |            0.742           |          **0.758**         |            0.823           |   0.776   |
+|   **IndexTTS-1.5**  |       0.741       |            0.722           |          0.753         |            0.819           |   0.771   |
 
 
 
@@ -113,11 +118,36 @@ The main improvements and contributions are summarized as follows:
 git clone https://github.com/index-tts/index-tts.git
 ```
 2. Install dependencies:
+
+Create a new conda environment and install dependencies:
+ 
 ```bash
 conda create -n index-tts python=3.10
 conda activate index-tts
-pip install -r requirements.txt
 apt-get install ffmpeg
+# or use conda to install ffmpeg
+conda install -c conda-forge ffmpeg
+```
+
+Install [PyTorch](https://pytorch.org/get-started/locally/), e.g.:
+```bash
+pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu118
+```
+
+> [!NOTE]
+> If you are using Windows you may encounter [an error](https://github.com/index-tts/index-tts/issues/61) when installing `pynini`:
+`ERROR: Failed building wheel for pynini`
+> In this case, please install `pynini` via `conda`:
+> ```bash
+> # after conda activate index-tts
+> conda install -c conda-forge pynini==2.1.6
+> pip install WeTextProcessing --no-deps
+> ```
+
+Install `IndexTTS` as a package:
+```bash
+cd index-tts
+pip install -e .
 ```
 
 3. Download models:
@@ -125,8 +155,8 @@ apt-get install ffmpeg
 Download by `huggingface-cli`:
 
 ```bash
-huggingface-cli download IndexTeam/Index-TTS \
-  bigvgan_discriminator.pth bigvgan_generator.pth bpe.model dvae.pth gpt.pth unigram_12000.vocab \
+huggingface-cli download IndexTeam/IndexTTS-1.5 \
+  config.yaml bigvgan_discriminator.pth bigvgan_generator.pth bpe.model dvae.pth gpt.pth unigram_12000.vocab \
   --local-dir checkpoints
 ```
 
@@ -138,27 +168,31 @@ export HF_ENDPOINT="https://hf-mirror.com"
 Or by `wget`:
 
 ```bash
-wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/bigvgan_discriminator.pth -P checkpoints
-wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/bigvgan_generator.pth -P checkpoints
-wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/bpe.model -P checkpoints
-wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/dvae.pth -P checkpoints
-wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/gpt.pth -P checkpoints
-wget https://huggingface.co/IndexTeam/Index-TTS/resolve/main/unigram_12000.vocab -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bigvgan_discriminator.pth -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bigvgan_generator.pth -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/bpe.model -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/dvae.pth -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/gpt.pth -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/unigram_12000.vocab -P checkpoints
+wget https://huggingface.co/IndexTeam/IndexTTS-1.5/resolve/main/config.yaml -P checkpoints
 ```
+
+> [!NOTE]
+> If you prefer to use the `IndexTTS-1.0` model, please replace `IndexTeam/IndexTTS-1.5` with `IndexTeam/IndexTTS` in the above commands.
+
 
 4. Run test script:
 
 
 ```bash
 # Please put your prompt audio in 'test_data' and rename it to 'input.wav'
-PYTHONPATH=. python indextts/infer.py
+python indextts/infer.py
 ```
 
 5. Use as command line tool:
 
 ```bash
 # Make sure pytorch has been installed before running this command
-pip install -e .
 indextts "大家好，我现在正在bilibili 体验 ai 科技，说实话，来之前我绝对想不到！AI技术已经发展到这样匪夷所思的地步了！" \
   --voice reference_voice.wav \
   --model_dir checkpoints \
@@ -173,24 +207,15 @@ indextts --help
 
 #### Web Demo
 ```bash
-pip install -e ".[webui]"
+pip install -e ".[webui]" --no-build-isolation
 python webui.py
+
+# use another model version:
+python webui.py --model_dir IndexTTS-1.5
 ```
+
 Open your browser and visit `http://127.0.0.1:7860` to see the demo.
 
-#### Note for Windows Users
-
-On Windows, you may encounter [an error](https://github.com/index-tts/index-tts/issues/61) when installing `pynini`:
-`ERROR: Failed building wheel for pynini`
-
-In this case, please install `pynini` via `conda`:
-
-```bash
-# after conda activate index-tts
-conda install -c conda-forge pynini==2.1.5
-pip install WeTextProcessing==1.0.3
-pip install -e ".[webui]"
-```
 
 #### Sample Code
 ```python
