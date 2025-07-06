@@ -16,10 +16,11 @@ node_modules/
 dist/
 build/
 
-# 模型文件
-backend/models/ClearerVoice_Minimal/checkpoints/
-backend/models/IndexTTS/checkpoints/
-backend/models/IndexTTS/README.md
+# 模型文件和checkpoints
+models/ClearerVoice_Minimal/checkpoints/
+models/IndexTTS/checkpoints/
+models/*/checkpoints/
+checkpoints/
 
 
 *.pt
