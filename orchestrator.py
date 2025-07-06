@@ -11,7 +11,7 @@ from ray.serve.handle import DeploymentHandle
 
 from config import get_config
 from utils.task_storage import TaskPaths
-from core.supabase_client import SupabaseClient
+from core.cloudflare.d1_client import D1Client
 
 logger = logging.getLogger(__name__)
 
@@ -25,16 +25,22 @@ class MainOrchestrator:
     def __init__(self):
         self.logger = logger
         self.config = get_config()
-        self.supabase_client = SupabaseClient(config=self.config)
+        
+        # 初始化D1客户端
+        self.d1_client = D1Client(
+            account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
+            api_token=self.config.CLOUDFLARE_API_TOKEN,
+            database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
+        )
 
         # 获取所有服务句柄
         self._init_service_handles()
         
         # 验证所有句柄是否正确初始化
         required_handles = [
-            'video_separator_handle', 'asr_model_handle', 'my_index_tts_handle',
+            'data_fetcher_handle', 'audio_segmenter_handle', 'my_index_tts_handle',
             'duration_aligner_handle', 'timestamp_adjuster_handle', 
-            'media_mixer_handle', 'hls_manager_handle', 'translator_handle'
+            'media_mixer_handle', 'hls_manager_handle'
         ]
         
         missing_handles = [handle for handle in required_handles if not hasattr(self, handle)]
@@ -47,14 +53,13 @@ class MainOrchestrator:
     def _init_service_handles(self):
         """初始化所有服务句柄"""
         handle_configs = [
-            ("video_separator", "video_separator", "VideoSeparatorApp"),
-            ("asr_model", "asr_model", "ASRApp"),
+            ("data_fetcher", "data_fetcher", "DataFetcherApp"),
+            ("audio_segmenter", "audio_segmenter", "AudioSegmenterApp"),
             ("my_index_tts", "my_index_tts", "TTSApp"),
             ("duration_aligner", "duration_aligner", "DurationAlignerApp"),
             ("timestamp_adjuster", "timestamp_adjuster", "TimestampAdjusterApp"),
             ("media_mixer", "media_mixer", "MediaMixerApp"),
-            ("hls_manager", "hls_manager", "HLSManagerApp"),
-            ("translator", "translator", "TranslatorApp")
+            ("hls_manager", "hls_manager", "HLSManagerApp")
         ]
         
         for attr_name, deployment_name, app_name in handle_configs:
@@ -70,12 +75,8 @@ class MainOrchestrator:
 
     async def _update_task_status(self, task_id: str, status: str, error_message: str = None):
         """统一的任务状态更新"""
-        update_data = {'status': status}
-        if error_message:
-            update_data['error_message'] = error_message
-        
         try:
-            asyncio.create_task(self.supabase_client.update_task(task_id, update_data))
+            asyncio.create_task(self.d1_client.update_task_status(task_id, status, error_message))
         except Exception as e:
             self.logger.warning(f"[{task_id}] 更新任务状态失败: {e}")
 
@@ -85,197 +86,189 @@ class MainOrchestrator:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    async def run_preprocessing_pipeline(self, task_id: str, video_path: str, video_width: int, 
-                                       video_height: int, target_language: str, generate_subtitle: bool):
-        """执行预处理流水线"""
+    async def run_complete_tts_pipeline(self, task_id: str):
+        """
+        执行完整的TTS流水线
+        从D1获取转录数据，从R2下载音频，进行音频切分，TTS合成，最终生成HLS流
+        """
         start_time = time.time()
-        self.logger.info(f"[{task_id}] 开始预处理: {video_path}, 语言: {target_language}")
-        
-        await self._update_task_status(task_id, 'preprocessing')
+        self.logger.info(f"[{task_id}] 开始完整TTS流程")
         
         try:
-            task_paths = TaskPaths(self.config, task_id)
-            # 确保任务目录存在
-            await asyncio.to_thread(task_paths.create_directories)
-            self.logger.info(f"[{task_id}] 任务目录已创建")
-
-            # 视频分离
-            separated_media = await self.video_separator_handle.separate_video.remote(
-                video_path, str(task_paths.media_dir), video_width, video_height, task_id
-            )
+            await self._update_task_status(task_id, 'processing')
             
-            if not separated_media or "vocals_audio_path" not in separated_media or \
-               not Path(separated_media["vocals_audio_path"]).exists():
-                await self._update_task_status(task_id, 'error', '视频分离失败或未检测到人声')
-                return {"status": "error", "message": "视频分离失败或未检测到人声"}
+            # 第一步：获取任务数据
+            self.logger.info(f"[{task_id}] 第1步：获取任务数据")
+            task_data = await self.data_fetcher_handle.fetch_task_data.remote(task_id)
             
-            self.logger.info(f"[{task_id}] 视频分离完成")
-
-            # ASR处理
-            sentences = await self.asr_model_handle.generate.remote(
-                input=separated_media["vocals_audio_path"],
-                cache={},
-                language="auto",
-                use_itn=True,
-                batch_size_s=60,
-                merge_vad=False,
-                task_id=task_id,
-                task_paths=task_paths,
-            )
+            if task_data["status"] != "success":
+                error_msg = f"获取任务数据失败: {task_data.get('message', 'Unknown error')}"
+                await self._update_task_status(task_id, 'error', error_msg)
+                return {"status": "error", "message": error_msg}
+            
+            sentences = task_data["sentences"]
+            audio_file_path = task_data["audio_file_path"]
+            video_file_path = task_data["video_file_path"]
             
             if not sentences:
-                self.logger.info(f"[{task_id}] ASR未检测到语音")
-                return {"status": "preprocessed", "message": "预处理完成（未检测到语音）"}
-
-            self.logger.info(f"[{task_id}] 预处理完成，获得 {len(sentences)} 个句子")
-            await self._update_task_status(task_id, 'preprocessed')
-            return {"status": "preprocessed", "message": "预处理完成"}
-
-        except Exception as e:
-            self.logger.exception(f"[{task_id}] 预处理错误: {e}")
-            await self._update_task_status(task_id, 'error', f"预处理错误: {e}")
-            return {"status": "error", "message": f"预处理错误: {e}"}
-        finally:
-            self._clean_memory()
-            self.logger.info(f"[{task_id}] 预处理耗时: {time.time() - start_time:.2f}s")
-
-    async def run_tts_pipeline(self, task_id: str):
-        """执行TTS流水线"""
-        start_time = time.time()
-        self.logger.info(f"[{task_id}] 开始TTS流程")
-        task_paths = TaskPaths(self.config, task_id)
-        # 确保任务目录存在
-        await asyncio.to_thread(task_paths.create_directories)
-        self.logger.info(f"[{task_id}] 任务目录已创建")
-        
-        try:
-            # 初始化HLS管理器
+                error_msg = "没有找到句子数据"
+                await self._update_task_status(task_id, 'error', error_msg)
+                return {"status": "error", "message": error_msg}
+            
+            if not audio_file_path:
+                error_msg = "没有找到音频文件"
+                await self._update_task_status(task_id, 'error', error_msg)
+                return {"status": "error", "message": error_msg}
+            
+            self.logger.info(f"[{task_id}] 获取到 {len(sentences)} 个句子和音频文件")
+            
+            # 第二步：音频切分
+            self.logger.info(f"[{task_id}] 第2步：音频切分和语音克隆样本生成")
+            segmented_sentences = await self.audio_segmenter_handle.segment_audio_for_sentences.remote(
+                task_id, audio_file_path, sentences
+            )
+            
+            if not segmented_sentences:
+                error_msg = "音频切分失败"
+                await self._update_task_status(task_id, 'error', error_msg)
+                return {"status": "error", "message": error_msg}
+            
+            self.logger.info(f"[{task_id}] 音频切分完成，处理了 {len(segmented_sentences)} 个句子")
+            
+            # 第三步：初始化HLS管理器
+            self.logger.info(f"[{task_id}] 第3步：初始化HLS管理器")
+            task_paths = TaskPaths(self.config, task_id)
+            await asyncio.to_thread(task_paths.create_directories)
+            
             hls_init_response = await self.hls_manager_handle.create_manager.remote(task_id, task_paths)
             if not (isinstance(hls_init_response, dict) and hls_init_response.get("status") == "success"):
-                self.logger.error(f"[{task_id}] HLS管理器初始化失败: {hls_init_response}")
-                return {"status": "error", "message": f"HLS初始化失败: {hls_init_response}"}
-
-            # 处理TTS流
-            result = await self._process_tts_stream(task_id, task_paths)
+                error_msg = f"HLS管理器初始化失败: {hls_init_response}"
+                await self._update_task_status(task_id, 'error', error_msg)
+                return {"status": "error", "message": error_msg}
             
-            self.logger.info(f"[{task_id}] TTS完成，耗时: {time.time() - start_time:.2f}s")
+            # 第四步：TTS处理流
+            self.logger.info(f"[{task_id}] 第4步：开始TTS合成和HLS生成")
+            result = await self._process_tts_stream_with_segmented_audio(
+                task_id, task_paths, segmented_sentences, video_file_path
+            )
+            
+            elapsed_time = time.time() - start_time
+            if result["status"] == "success":
+                await self._update_task_status(task_id, 'completed')
+                self.logger.info(f"[{task_id}] 完整TTS流程成功完成，总耗时: {elapsed_time:.2f}s")
+            else:
+                await self._update_task_status(task_id, 'error', result.get('message'))
+                self.logger.error(f"[{task_id}] 完整TTS流程失败，总耗时: {elapsed_time:.2f}s")
+            
             return result
 
         except Exception as e:
-            self.logger.exception(f"[{task_id}] TTS流程失败: {e}")
-            return {"status": "error", "message": f"TTS流程失败: {e}"}
+            error_msg = f"TTS流程异常: {e}"
+            self.logger.exception(f"[{task_id}] {error_msg}")
+            await self._update_task_status(task_id, 'error', error_msg)
+            return {"status": "error", "message": error_msg}
         finally:
             self._clean_memory()
 
-    async def _process_tts_stream(self, task_id: str, task_paths: TaskPaths):
-        """处理TTS流并生成HLS段"""
+    async def _process_tts_stream_with_segmented_audio(self, task_id: str, task_paths: TaskPaths, 
+                                                     sentences: List, video_file_path: str):
+        """处理TTS流并生成HLS段（使用已切分的音频）"""
         added_hls_segments = 0
         current_audio_time_ms = 0.0
         processed_segment_paths = []
         batch_counter = 0
 
-        # 生成音频流并处理
-        async for tts_sentence_batch in self.my_index_tts_handle.generate_audio_stream.options(stream=True).remote(task_id):
-            if not tts_sentence_batch:
-                continue
-
-            # 时长对齐
-            aligned_batch = await self.duration_aligner_handle.remote(tts_sentence_batch, max_speed=1.2)
-            if not aligned_batch:
-                continue
-
-            # 时间戳调整
-            adjusted_batch = await self.timestamp_adjuster_handle.remote(
-                aligned_batch, self.config.TARGET_SR, current_audio_time_ms
-            )
-            if not adjusted_batch:
-                continue
-
-            # 更新当前音频时间
-            last_sentence = adjusted_batch[-1]
-            current_audio_time_ms = last_sentence.adjusted_start + last_sentence.adjusted_duration
-
-            # 媒体混合
-            output_segment_path = await self.media_mixer_handle.mix_media.remote(
-                sentences_batch=adjusted_batch,
-                task_paths=task_paths,
-                batch_counter=batch_counter,
-                task_id=task_id
-            )
-            
-            if not output_segment_path:
-                self.logger.warning(f"[{task_id}] 媒体混合失败，跳过批次 {batch_counter}")
-                continue
-
-            # 添加HLS段
-            hls_add_result = await self.hls_manager_handle.add_segment.remote(
-                task_id, output_segment_path, batch_counter + 1
-            )
-            
-            if hls_add_result and hls_add_result.get("status") == "success":
-                added_hls_segments += 1
-                processed_segment_paths.append(output_segment_path)
-                batch_counter += 1
-                self.logger.info(f"[{task_id}] 添加HLS段 {batch_counter} 成功")
-            else:
-                err_msg = hls_add_result.get('message') if hls_add_result else '未知HLS添加错误'
-                self.logger.error(f"[{task_id}] 添加HLS段失败: {err_msg}")
-            
-            self._clean_memory()
-
-        # 最终化HLS并合并
-        result = await self.hls_manager_handle.finalize_merge.remote(
-            task_id=task_id,
-            all_processed_segment_paths=processed_segment_paths,
-            task_paths=task_paths
-        )
-        
-        if result and result.get("status") == "success":
-            self.logger.info(f"[{task_id}] HLS最终化成功，生成段数: {added_hls_segments}")
-        else:
-            err_msg = result.get('message') if result else '无效的最终化结果'
-            self.logger.error(f"[{task_id}] HLS最终化失败: {err_msg}")
-            return {"status": "error", "message": err_msg}
-        
-        return result 
-
-    async def run_translation_pipeline(self, task_id: str, target_language: str = "zh"):
-        """执行翻译流水线"""
-        start_time = time.time()
-        self.logger.info(f"[{task_id}] 开始翻译流程，目标语言: {target_language}")
-        
         try:
-            # 从数据库获取句子数据
-            await self.supabase_client.initialize()
-            sentences = await self.supabase_client.get_sentences(task_id, as_objects=True)
-            
-            if not sentences:
-                await self._update_task_status(task_id, 'translated')
-                return {"status": "translated", "message": "没有需要翻译的句子"}
-            
-            self.logger.info(f"[{task_id}] 从数据库获取到 {len(sentences)} 个句子")
-            
-            # 执行翻译
-            translated_count = 0
-            async for batch_result in self.translator_handle.translate_sentences.options(stream=True).remote(
-                sentences, batch_size=50, target_language=target_language
+            # 使用新的TTS生成方法，传入已切分的句子
+            async for tts_sentence_batch in self.my_index_tts_handle.batch_generate.options(stream=True).remote(
+                sentences, batch_size=self.config.TTS_BATCH_SIZE
             ):
-                translated_count += len(batch_result)
-                self.logger.info(f"[{task_id}] 翻译进度: {translated_count}/{len(sentences)}")
+                if not tts_sentence_batch:
+                    continue
+
+                self.logger.info(f"[{task_id}] 处理TTS批次 {batch_counter}，包含 {len(tts_sentence_batch)} 个句子")
+
+                # 时长对齐
+                aligned_batch = await self.duration_aligner_handle.remote(tts_sentence_batch, max_speed=1.2)
+                if not aligned_batch:
+                    self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时长对齐失败，跳过")
+                    continue
+
+                # 时间戳调整
+                adjusted_batch = await self.timestamp_adjuster_handle.remote(
+                    aligned_batch, self.config.TARGET_SR, current_audio_time_ms
+                )
+                if not adjusted_batch:
+                    self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时间戳调整失败，跳过")
+                    continue
+
+                # 更新当前音频时间
+                last_sentence = adjusted_batch[-1]
+                current_audio_time_ms = last_sentence.adjusted_start + last_sentence.adjusted_duration
+
+                # 媒体混合（需要传入视频文件路径）
+                output_segment_path = await self.media_mixer_handle.mix_media.remote(
+                    sentences_batch=adjusted_batch,
+                    task_paths=task_paths,
+                    batch_counter=batch_counter,
+                    task_id=task_id,
+                    video_file_path=video_file_path  # 新增参数
+                )
                 
-                # 批量更新翻译结果到数据库
-                for sentence in batch_result:
-                    await self.supabase_client.update_sentence_translation(
-                        task_id, sentence.sentence_id, sentence.trans_text
-                    )
+                if not output_segment_path:
+                    self.logger.warning(f"[{task_id}] 批次 {batch_counter} 媒体混合失败，跳过")
+                    continue
+
+                # 添加HLS段
+                hls_add_result = await self.hls_manager_handle.add_segment.remote(
+                    task_id, output_segment_path, batch_counter + 1
+                )
+                
+                if hls_add_result and hls_add_result.get("status") == "success":
+                    added_hls_segments += 1
+                    processed_segment_paths.append(output_segment_path)
+                    batch_counter += 1
+                    self.logger.info(f"[{task_id}] 成功添加HLS段 {batch_counter}")
+                else:
+                    err_msg = hls_add_result.get('message') if hls_add_result else '未知HLS添加错误'
+                    self.logger.error(f"[{task_id}] 添加HLS段失败: {err_msg}")
+                
+                self._clean_memory()
+
+            # 最终化HLS并合并
+            self.logger.info(f"[{task_id}] 开始HLS最终化处理")
+            result = await self.hls_manager_handle.finalize_merge.remote(
+                task_id=task_id,
+                all_processed_segment_paths=processed_segment_paths,
+                task_paths=task_paths
+            )
             
-            await self._update_task_status(task_id, 'translated')
-            self.logger.info(f"[{task_id}] 翻译完成，耗时: {time.time() - start_time:.2f}s")
-            return {"status": "translated", "message": "翻译完成"}
+            if result and result.get("status") == "success":
+                self.logger.info(f"[{task_id}] HLS最终化成功，生成 {added_hls_segments} 个段")
+                return result
+            else:
+                err_msg = result.get('message') if result else '无效的最终化结果'
+                self.logger.error(f"[{task_id}] HLS最终化失败: {err_msg}")
+                return {"status": "error", "message": err_msg}
             
         except Exception as e:
-            self.logger.exception(f"[{task_id}] 翻译流程失败: {e}")
-            await self._update_task_status(task_id, 'error', f"翻译失败: {e}")
-            return {"status": "error", "message": f"翻译失败: {e}"}
-        finally:
-            self._clean_memory() 
+            self.logger.exception(f"[{task_id}] TTS流处理异常: {e}")
+            return {"status": "error", "message": f"TTS流处理失败: {e}")
+
+    async def get_task_status(self, task_id: str) -> Dict:
+        """获取任务状态"""
+        try:
+            task_info = await self.d1_client.get_task_info(task_id)
+            if not task_info:
+                return {"status": "error", "message": "任务不存在"}
+            
+            return {
+                "status": "success",
+                "task_id": task_id,
+                "task_status": task_info.get('status'),
+                "hls_playlist_url": task_info.get('hls_playlist_url'),
+                "error_message": task_info.get('error_message')
+            }
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 获取任务状态失败: {e}")
+            return {"status": "error", "message": f"获取任务状态失败: {e}"}

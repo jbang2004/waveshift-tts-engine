@@ -18,7 +18,18 @@ parser.add_argument("--verbose", action="store_true", default=False, help="Enabl
 parser.add_argument("--port", type=int, default=7860, help="Port to run the web UI on")
 parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to run the web UI on")
 parser.add_argument("--model_dir", type=str, default="checkpoints", help="Model checkpoints directory")
+parser.add_argument("--no-proxy", action="store_true", default=False, help="Bypass proxy for localhost connections")
 cmd_args = parser.parse_args()
+
+# 如果指定了 --no-proxy，则设置环境变量绕过本地代理
+if cmd_args.no_proxy:
+    for key in ("NO_PROXY", "no_proxy"):
+        current_value = os.environ.get(key, "")
+        localhost_entries = "127.0.0.1,localhost,::1"
+        if current_value:
+            os.environ[key] = f"{current_value},{localhost_entries}"
+        else:
+            os.environ[key] = localhost_entries
 
 if not os.path.exists(cmd_args.model_dir):
     print(f"Model directory {cmd_args.model_dir} does not exist. Please download the model first.")

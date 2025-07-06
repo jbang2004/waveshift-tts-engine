@@ -7,10 +7,9 @@ from config import get_config, init_logging
 logger = logging.getLogger(__name__)
 
 # 导入所有核心组件
-from core.video_separator import VideoSeparator
-from core.asr_model import ASRModel
+from core.data_fetcher import DataFetcher
+from core.audio_segmenter import AudioSegmenter
 from core.translation.simplifier import Simplifier
-from core.translation.translator import Translator
 from core.my_index_tts import MyIndexTTSDeployment
 from core.timeadjust.duration_aligner import DurationAligner
 from core.timeadjust.timestamp_adjuster import TimestampAdjuster
@@ -25,10 +24,9 @@ def deploy_core_services():
     
     # 服务配置映射
     services = [
-        ("VideoSeparatorApp", VideoSeparator.bind()),
-        ("ASRApp", ASRModel.bind()),
+        ("DataFetcherApp", DataFetcher.bind()),
+        ("AudioSegmenterApp", AudioSegmenter.bind()),
         ("SimplifierApp", Simplifier.bind()),
-        ("TranslatorApp", Translator.bind()),
         ("TTSApp", MyIndexTTSDeployment.bind(config)),
         ("DurationAlignerApp", DurationAligner.bind()),
         ("TimestampAdjusterApp", TimestampAdjuster.bind()),

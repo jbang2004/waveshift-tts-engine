@@ -35,14 +35,10 @@ wandb
 wget
 yamlargparse
 google.generativeai
-pysubs2
-dotenv
 ray[default]
-openai
-json_repair
-m3u8
-funasr
 ray[serve]
 rotary_embedding_torch
 librosa
 pydub
+boto3
+httpx

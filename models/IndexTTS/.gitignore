@@ -8,6 +8,7 @@ checkpoints/*.pth
 checkpoints/*.vocab
 checkpoints/*.model
 checkpoints/.cache
+checkpoints/
 outputs/
 build/
 *.py[cod]

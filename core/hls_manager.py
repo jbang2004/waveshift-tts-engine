@@ -13,8 +13,8 @@ import aiofiles
 from utils.ffmpeg_utils import hls_segment, concat_videos
 from utils.task_storage import TaskPaths
 from config import Config
-from core.supabase_client import SupabaseClient
-from core.hls_storage_manager import HLSStorageManager
+from core.cloudflare.d1_client import D1Client
+from core.cloudflare.r2_hls_storage_manager import R2HLSStorageManager
 
 logger = logging.getLogger(__name__)
 
@@ -26,8 +26,16 @@ class HLSManager:
     """HLS流媒体管理器 - 支持多任务管理"""
     def __init__(self):
         self.config = Config()
-        self.supabase_client = SupabaseClient(config=self.config)
-        self.hls_storage_manager = HLSStorageManager(config=self.config)
+        
+        # 初始化D1客户端
+        self.d1_client = D1Client(
+            account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
+            api_token=self.config.CLOUDFLARE_API_TOKEN,
+            database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
+        )
+        
+        # 初始化R2 HLS存储管理器
+        self.hls_storage_manager = R2HLSStorageManager(config=self.config)
         self.logger = logging.getLogger(__name__)
         
         # 存储每个任务的HLS管理信息
@@ -113,12 +121,11 @@ class HLSManager:
             except Exception as e:
                 error_message = f"为任务 {task_id} 创建HLS管理器失败: {e}"
                 self.logger.error(error_message)
-                # Update Supabase task status to error
-                if self.supabase_client:
-                    try:
-                        asyncio.create_task(self.supabase_client.update_task(task_id, {'status': 'error', 'error_message': f"HLS管理器初始化失败: {e}"}))
-                    except Exception as db_update_e:
-                        self.logger.error(f"任务 {task_id}: 更新数据库状态失败 (HLS创建失败时): {db_update_e}")
+                # Update D1 task status to error
+                try:
+                    asyncio.create_task(self.d1_client.update_task_status(task_id, 'error', f"HLS管理器初始化失败: {e}"))
+                except Exception as db_update_e:
+                    self.logger.error(f"任务 {task_id}: 更新数据库状态失败 (HLS创建失败时): {db_update_e}")
 
                 # 清理已创建的部分资源
                 if task_id in self.task_managers:
@@ -167,7 +174,7 @@ class HLSManager:
     
     async def _upload_playlist_to_storage(self, task_id: str) -> None:
         """
-        将播放列表上传到Supabase Storage（支持增量更新）
+        将播放列表上传到R2存储（支持增量更新）
         
         Args:
             task_id: 任务ID
@@ -179,33 +186,29 @@ class HLSManager:
             manager = self.task_managers[task_id]
             playlist = manager["playlist"]
             
-            # 获取播放列表内容并更新为相对路径
+            # 获取播放列表内容
             playlist_content = playlist.dumps()
-            updated_content = await self.hls_storage_manager.update_playlist_with_storage_urls(
-                playlist_content, task_id
-            )
             
-            # 上传到Storage（这会覆盖之前的版本，但内存中的playlist对象包含了所有片段）
-            upload_result = await self.hls_storage_manager.upload_playlist(task_id, updated_content)
+            # 上传到R2存储
+            upload_result = await self.hls_storage_manager.upload_playlist(task_id, playlist_content)
             
             if upload_result["status"] == "success":
-                self.logger.info(f"[{task_id}] 播放列表已上传到Storage: {upload_result['storage_path']} (包含 {len(playlist.segments)} 个片段)")
+                self.logger.info(f"[{task_id}] 播放列表已上传到R2: {upload_result['storage_path']} (包含 {len(playlist.segments)} 个片段)")
                 
-                # 更新数据库中的HLS播放列表URL为Storage的公共URL
+                # 更新数据库中的HLS播放列表URL为R2的公共URL
                 storage_url = upload_result["public_url"]
-                if self.supabase_client:
-                    try:
-                        asyncio.create_task(self.supabase_client.update_task(task_id, {
-                            'hls_playlist_url': storage_url,
-                        }))
-                        self.logger.info(f"[{task_id}] HLS播放列表Storage URL已更新到数据库: {storage_url}")
-                    except Exception as update_e:
-                        self.logger.error(f"[{task_id}] 更新HLS播放列表Storage URL到数据库失败: {update_e}")
+                try:
+                    asyncio.create_task(self.d1_client.update_task_status(
+                        task_id, 'processing', hls_playlist_url=storage_url
+                    ))
+                    self.logger.info(f"[{task_id}] HLS播放列表R2 URL已更新到数据库: {storage_url}")
+                except Exception as update_e:
+                    self.logger.error(f"[{task_id}] 更新HLS播放列表R2 URL到数据库失败: {update_e}")
             else:
-                self.logger.error(f"[{task_id}] 播放列表上传到Storage失败: {upload_result.get('message', 'Unknown error')}")
+                self.logger.error(f"[{task_id}] 播放列表上传到R2失败: {upload_result.get('message', 'Unknown error')}")
                 
         except Exception as e:
-            self.logger.error(f"[{task_id}] 上传播放列表到Storage失败: {e}")
+            self.logger.error(f"[{task_id}] 上传播放列表到R2失败: {e}")
             raise
 
     async def add_segment(self, task_id: str, video_path: Union[str, Path], part_index: int) -> Dict:
@@ -271,7 +274,7 @@ class HLSManager:
                     segment.uri = Path(segment.uri).name
                     playlist.segments.append(segment)
 
-                # 上传新分段文件到Supabase Storage（如果启用）
+                # 上传新分段文件到R2存储（如果启用）
                 if self.config.ENABLE_HLS_STORAGE and new_segment_files:
                     upload_result = await self.hls_storage_manager.batch_upload_segments(task_id, new_segment_files)
                     if upload_result["status"] in ["success", "partial"]:
