@@ -4,7 +4,7 @@ import sys
 import logging
 import asyncio
 import gc
-from typing import List, AsyncGenerator, Optional, Union
+from typing import List, AsyncGenerator
 
 import torch
 import numpy as np
@@ -63,39 +63,25 @@ class MyIndexTTSDeployment:
         self.sampling_rate = self.config.TARGET_SR
         self.batch_size = self.config.TTS_BATCH_SIZE
         self._lock = asyncio.Lock()
-        # Initialize Supabase client for fetching sentences
-        self.supabase_client = SupabaseClient(config=self.config)
+        # Note: 句子数据现在通过参数传递，不再需要数据库客户端
 
     def _clean_memory(self):
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    async def generate_audio_stream(self, input_data: Union[str, List]) -> AsyncGenerator[List, None]:
+    async def generate_audio_stream(self, sentences: List) -> AsyncGenerator[List, None]:
         """
-        统一的音频生成方法，支持task_id或句子列表输入
+        为句子列表生成音频流
         
         Args:
-            input_data: task_id (str) 或句子列表 (List)
+            sentences: 句子列表
         """
-        # 根据输入类型获取句子列表
-        if isinstance(input_data, str):
-            # 输入是task_id，从数据库获取句子
-            await self.supabase_client.initialize()
-            sentences = await self.supabase_client.get_sentences(input_data, as_objects=True)
-            task_id = input_data
-        elif isinstance(input_data, list):
-            # 输入是句子列表
-            sentences = input_data
-            task_id = getattr(sentences[0], 'task_id', 'unknown') if sentences else 'unknown'
-        else:
-            logger.error(f"TTS: 不支持的输入类型: {type(input_data)}")
-            return
-
         if not sentences:
-            logger.warning(f"TTS: 任务 {task_id} 没有可处理的句子，跳过生成。")
+            logger.warning("TTS: 没有可处理的句子，跳过生成。")
             return
 
+        task_id = getattr(sentences[0], 'task_id', 'unknown') if sentences else 'unknown'
         logger.info(f"TTS: 开始为 {len(sentences)} 个句子生成音频 (任务: {task_id})")
 
         # 批量生成音频
