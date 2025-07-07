@@ -50,8 +50,8 @@ def main():
     config = get_config()
     logger.info("配置和日志初始化完成")
 
-    # 扩展系统路径
-    if config.SYSTEM_PATHS:
+    # 扩展系统路径（如果配置了）
+    if hasattr(config, 'SYSTEM_PATHS') and config.SYSTEM_PATHS:
         sys.path.extend(config.SYSTEM_PATHS)
         logger.info(f"系统路径已扩展: {config.SYSTEM_PATHS}")
 
