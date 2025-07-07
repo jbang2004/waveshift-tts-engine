@@ -253,7 +253,7 @@ class MainOrchestrator:
             
         except Exception as e:
             self.logger.exception(f"[{task_id}] TTS流处理异常: {e}")
-            return {"status": "error", "message": f"TTS流处理失败: {e}")
+            return {"status": "error", "message": f"TTS流处理失败: {e}"}
 
     async def get_task_status(self, task_id: str) -> Dict:
         """获取任务状态"""

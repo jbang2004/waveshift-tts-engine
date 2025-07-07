@@ -1,7 +1,6 @@
 aiofiles
 Cython
 einops
-funasr==1.2.3
 huggingface_hub==0.27.1
 HyperPyYAML
 joblib
@@ -25,13 +24,11 @@ Requests
 scipy
 setuptools
 soundfile
-supabase>=2.2.0
 tiktoken
 torchinfo
 tqdm
 transformers
 Unidecode
-wandb
 wget
 yamlargparse
 google.generativeai
