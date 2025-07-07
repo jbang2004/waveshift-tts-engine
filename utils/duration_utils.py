@@ -30,7 +30,7 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
     for i, sentence in enumerate(sentences):
         try:
             if sentence.generated_audio is None or len(sentence.generated_audio) == 0:
-                logger.warning(f"[{task_id}] 句子 {sentence.sentence_id}: 没有可调整的音频数据")
+                logger.warning(f"[{task_id}] 句子 {sentence.sequence}: 没有可调整的音频数据")
                 sentence.speech_duration = 0.0
                 continue
             
@@ -42,7 +42,7 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
             if hasattr(sentence, 'is_first') and sentence.is_first and hasattr(sentence, 'start') and sentence.start > 0:
                 silence_samples = int(sentence.start * sample_rate / 1000)
                 if silence_samples > 0:
-                    logger.info(f"[{task_id}] 句子 {sentence.sentence_id}: 在开头添加 {sentence.start:.2f}毫秒静音 ({silence_samples} 个采样点)")
+                    logger.info(f"[{task_id}] 句子 {sentence.sequence}: 在开头添加 {sentence.start:.2f}毫秒静音 ({silence_samples} 个采样点)")
                     
                     # 对音频开头添加淡入效果
                     fade_len = min(fade_length, len(sentence.generated_audio) // 4)
@@ -59,12 +59,12 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
                     
                     # 记录操作结果
                     current_duration = (len(sentence.generated_audio) / sample_rate) * 1000
-                    logger.warning(f"[{task_id}] 句子 {sentence.sentence_id}: 开头静音已添加，原始时长: {original_duration:.2f}毫秒，新时长: {current_duration:.2f}毫秒")
+                    logger.warning(f"[{task_id}] 句子 {sentence.sequence}: 开头静音已添加，原始时长: {original_duration:.2f}毫秒，新时长: {current_duration:.2f}毫秒")
             
             # --- 2. 应用速度调整 ---
             if hasattr(sentence, 'speed') and sentence.speed != 1.0 and sentence.speed > 0:
                 try:
-                    logger.warning(f"[{task_id}] 句子 {sentence.sentence_id}: 调整速度至 {sentence.speed}")
+                    logger.warning(f"[{task_id}] 句子 {sentence.sequence}: 调整速度至 {sentence.speed}")
                     
                     # 使用 librosa 时间伸缩调整速度
                     audio_np = sentence.generated_audio.astype(np.float32)
@@ -82,16 +82,16 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
                     # 计算speech_duration（语速调整后的纯语音长度）
                     speech_duration = original_duration / sentence.speed
                     
-                    logger.warning(f"[{task_id}] 句子 {sentence.sentence_id}: 音频速度已调整，原始时长: {original_duration:.2f}毫秒，新时长: {new_duration:.2f}毫秒，纯语音时长: {speech_duration:.2f}毫秒")
+                    logger.warning(f"[{task_id}] 句子 {sentence.sequence}: 音频速度已调整，原始时长: {original_duration:.2f}毫秒，新时长: {new_duration:.2f}毫秒，纯语音时长: {speech_duration:.2f}毫秒")
                 
                 except Exception as e:
-                    logger.error(f"[{task_id}] 句子 {sentence.sentence_id}: 调整速度失败: {e}")
+                    logger.error(f"[{task_id}] 句子 {sentence.sequence}: 调整速度失败: {e}")
             
             # --- 3. 添加静音 ---
             if hasattr(sentence, 'silence_duration') and sentence.silence_duration > 0:
                 try:
                     silence_samples = int(sentence.silence_duration * sample_rate / 1000)
-                    logger.info(f"[{task_id}] 句子 {sentence.sentence_id}: 在结尾添加 {sentence.silence_duration:.2f}毫秒静音 ({silence_samples} 个采样点)")
+                    logger.info(f"[{task_id}] 句子 {sentence.sequence}: 在结尾添加 {sentence.silence_duration:.2f}毫秒静音 ({silence_samples} 个采样点)")
                     
                     # 对音频结尾添加淡出效果
                     fade_len = min(fade_length, len(sentence.generated_audio) // 4)
@@ -108,16 +108,16 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
                     
                     # 记录操作结果
                     new_duration = (len(sentence.generated_audio) / sample_rate) * 1000
-                    logger.warning(f"[{task_id}] 句子 {sentence.sentence_id}: 结尾静音已添加，原始时长: {original_duration:.2f}毫秒，新时长: {new_duration:.2f}毫秒")
+                    logger.warning(f"[{task_id}] 句子 {sentence.sequence}: 结尾静音已添加，原始时长: {original_duration:.2f}毫秒，新时长: {new_duration:.2f}毫秒")
                 
                 except Exception as e:
-                    logger.error(f"[{task_id}] 句子 {sentence.sentence_id}: 添加静音失败: {e}")
+                    logger.error(f"[{task_id}] 句子 {sentence.sequence}: 添加静音失败: {e}")
             
             # --- 4. 为最后一个句子添加视频结尾静音 ---
             if hasattr(sentence, 'is_last') and sentence.is_last and hasattr(sentence, 'ending_silence') and sentence.ending_silence > 0:
                 try:
                     ending_silence_samples = int(sentence.ending_silence * sample_rate / 1000)
-                    logger.info(f"[{task_id}] 句子 {sentence.sentence_id}: 为视频结尾添加 {sentence.ending_silence:.2f}毫秒静音 ({ending_silence_samples} 个采样点)")
+                    logger.info(f"[{task_id}] 句子 {sentence.sequence}: 为视频结尾添加 {sentence.ending_silence:.2f}毫秒静音 ({ending_silence_samples} 个采样点)")
                     
                     # 对音频结尾添加淡出效果
                     fade_len = min(fade_length, len(sentence.generated_audio) // 4)
@@ -134,10 +134,10 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
                     
                     # 记录操作结果
                     new_duration = (len(sentence.generated_audio) / sample_rate) * 1000
-                    logger.warning(f"[{task_id}] 句子 {sentence.sentence_id}: 视频结尾静音已添加，原始时长: {original_duration:.2f}毫秒，新时长: {new_duration:.2f}毫秒")
+                    logger.warning(f"[{task_id}] 句子 {sentence.sequence}: 视频结尾静音已添加，原始时长: {original_duration:.2f}毫秒，新时长: {new_duration:.2f}毫秒")
                 
                 except Exception as e:
-                    logger.error(f"[{task_id}] 句子 {sentence.sentence_id}: 添加视频结尾静音失败: {e}")
+                    logger.error(f"[{task_id}] 句子 {sentence.sequence}: 添加视频结尾静音失败: {e}")
             
             # --- 5. 更新句子的各种duration属性 ---
             final_duration = (len(sentence.generated_audio) / sample_rate) * 1000
@@ -145,10 +145,10 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
             sentence.adjusted_duration = final_duration  # 确保 adjusted_duration 也更新
             sentence.speech_duration = speech_duration  # 设置speech_duration为语速调整后的纯语音时长
             
-            logger.debug(f"[{task_id}] 句子 {sentence.sentence_id}: 音频调整完成，最终时长: {final_duration:.2f}毫秒，语音时长: {speech_duration:.2f}毫秒")
+            logger.debug(f"[{task_id}] 句子 {sentence.sequence}: 音频调整完成，最终时长: {final_duration:.2f}毫秒，语音时长: {speech_duration:.2f}毫秒")
         
         except Exception as e:
-            logger.error(f"[{task_id}] 处理句子 {sentence.sentence_id} 时出错: {e}")
+            logger.error(f"[{task_id}] 处理句子 {sentence.sequence} 时出错: {e}")
 
 def align_batch(sentences: List[Sentence]) -> List[Sentence]:
     """对句子批次进行时长对齐

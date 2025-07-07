@@ -15,12 +15,16 @@ SpeakerSegment = Tuple[float, float, int]
 
 @dataclass
 class Sentence:
-    raw_text: str
-    start: float
-    end: float
-    speaker_id: int
-    trans_text: str = field(default="")
-    sentence_id: int = field(default=-1)
+    # Worker 一致的字段名
+    original_text: str              # 原 raw_text
+    translated_text: str            # 原 trans_text  
+    sequence: int                   # 原 sentence_id
+    speaker: str                    # 原 speaker_id: int，现在改为 str
+    start_ms: float                 # 原 start
+    end_ms: float                   # 原 end
+    
+    # TTS 专用字段（保持不变）
+    task_id: str = field(default="")
     audio: str = field(default="")  # 音频文件路径
     target_duration: float = field(default=None)
     duration: float = field(default=0.0)
@@ -34,8 +38,23 @@ class Sentence:
     generated_audio: np.ndarray = field(default=None)
     adjusted_start: float = field(default=0.0)
     adjusted_duration: float = field(default=0.0)
-    task_id: str = field(default="")
     ending_silence: float = field(default=0.0)
+    
+    def __post_init__(self):
+        """初始化后自动计算缺失字段"""
+        # 计算 target_duration（秒）
+        if self.target_duration is None:
+            self.target_duration = (self.end_ms - self.start_ms) / 1000.0
+        
+        # 计算其他时长相关字段
+        if self.duration == 0.0:
+            self.duration = self.target_duration
+        
+        if self.speech_duration == 0.0:
+            self.speech_duration = self.duration * 0.9  # 假设90%是语音
+        
+        if self.silence_duration == 0.0:
+            self.silence_duration = self.duration * 0.1  # 假设10%是静音
 
 def tokens_timestamp_sentence(tokens: List[Token], timestamps: List[Timestamp], speaker_segments: List[SpeakerSegment], tokenizer, config: Config) -> List[Tuple[List[Token], List[Timestamp], int]]:
     sentences = []
@@ -118,32 +137,34 @@ def merge_sentences(raw_sentences: List[Tuple[List[Token], List[Timestamp], int]
     current_tokens_count = 0
 
     for tokens, timestamps, speaker_id in raw_sentences:
-        time_gap = timestamps[0][0] - current.end if current else float('inf')
+        time_gap = timestamps[0][0] - current.end_ms if current else float('inf')
         
         if (current and 
-            current.speaker_id == speaker_id and 
+            current.speaker == str(speaker_id) and 
             current_tokens_count + len(tokens) <= config.MAX_TOKENS_PER_SENTENCE and
             time_gap <= config.MAX_GAP_MS):
-            current.raw_text += tokenizer.decode(tokens)
-            current.end = timestamps[-1][1]
+            current.original_text += tokenizer.decode(tokens)
+            current.end_ms = timestamps[-1][1]
             current_tokens_count += len(tokens)
         else:
             if current:
-                current.target_duration = timestamps[0][0] - current.start
+                current.target_duration = (timestamps[0][0] - current.start_ms) / 1000.0
                 merged_sentences.append(current)
             
             text = tokenizer.decode(tokens)
             current = Sentence(
-                raw_text=text, 
-                start=timestamps[0][0], 
-                end=timestamps[-1][1], 
-                speaker_id=speaker_id,
+                original_text=text, 
+                start_ms=timestamps[0][0], 
+                end_ms=timestamps[-1][1], 
+                speaker=str(speaker_id),
+                translated_text="",  # 默认为空，后续翻译
+                sequence=len(merged_sentences) + 1,
             )
             current_tokens_count = len(tokens)
 
     if current:
-        current.target_duration = current.end - current.start
-        current.ending_silence = input_duration - current.end
+        current.target_duration = (current.end_ms - current.start_ms) / 1000.0
+        current.ending_silence = (input_duration * 1000 - current.end_ms) / 1000.0
         merged_sentences.append(current)
 
     if merged_sentences:
@@ -230,8 +251,8 @@ def extract_audio(sentences: List[Sentence], speech: torch.Tensor, sr: int, conf
         audio_prompts_dir.mkdir(parents=True, exist_ok=True)
 
     for i, s in enumerate(sentences):
-        start_sample = int(s.start * sr / 1000)
-        end_sample = int(s.end * sr / 1000)
+        start_sample = int(s.start_ms * sr / 1000)
+        end_sample = int(s.end_ms * sr / 1000)
 
         # Ensure non-negative duration and valid indices
         start_sample = max(0, start_sample)
@@ -246,10 +267,10 @@ def extract_audio(sentences: List[Sentence], speech: torch.Tensor, sr: int, conf
             # 向前累积补齐
             for j in range(i-1, -1, -1):
                 prev = sentences[j]
-                if prev.speaker_id != s.speaker_id:
+                if prev.speaker != s.speaker:
                     continue
-                prev_start = int(prev.start * sr / 1000)
-                prev_end   = int(prev.end   * sr / 1000)
+                prev_start = int(prev.start_ms * sr / 1000)
+                prev_end   = int(prev.end_ms   * sr / 1000)
                 prev_seg = _extract_segment(speech, prev_start, prev_end, needed, ignore_samples)
                 if prev_seg is None or prev_seg.shape[-1] == 0:
                     continue
@@ -269,10 +290,10 @@ def extract_audio(sentences: List[Sentence], speech: torch.Tensor, sr: int, conf
             if needed > 0:
                 for j in range(i+1, len(sentences)):
                     nxt = sentences[j]
-                    if nxt.speaker_id != s.speaker_id:
+                    if nxt.speaker != s.speaker:
                         continue
-                    next_start = int(nxt.start * sr / 1000)
-                    next_end   = int(nxt.end   * sr / 1000)
+                    next_start = int(nxt.start_ms * sr / 1000)
+                    next_end   = int(nxt.end_ms   * sr / 1000)
                     next_seg = _extract_segment(speech, next_start, next_end, needed, ignore_samples)
                     if next_seg is None or next_seg.shape[-1] == 0:
                         continue

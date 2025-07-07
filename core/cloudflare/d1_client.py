@@ -205,12 +205,12 @@ class D1Client:
         
         for trans in transcriptions:
             sentence = Sentence(
-                raw_text=trans.raw_text,
-                start=trans.start_ms,
-                end=trans.end_ms,
-                speaker_id=trans.speaker_id,
-                trans_text=trans.trans_text,
-                sentence_id=trans.sentence_id,
+                original_text=trans.raw_text,
+                start_ms=trans.start_ms,
+                end_ms=trans.end_ms,
+                speaker=str(trans.speaker_id),
+                translated_text=trans.trans_text,
+                sequence=trans.sentence_id,
                 target_duration=trans.target_duration_ms / 1000.0 if trans.target_duration_ms else None,
                 is_first=trans.is_first,
                 is_last=trans.is_last,
@@ -220,3 +220,103 @@ class D1Client:
             sentences.append(sentence)
             
         return sentences
+    
+    async def get_transcription_segments_from_worker(self, task_id: str) -> List[Sentence]:
+        """直接从 Worker 的表获取转录片段"""
+        # 第一步：获取 media_task 信息
+        task_sql = """
+        SELECT 
+            id, 
+            transcription_id,
+            target_language,
+            translation_style,
+            audio_path,
+            video_path
+        FROM media_tasks 
+        WHERE id = ?
+        """
+        
+        task_result = await self._execute_query(task_sql, [task_id])
+        if not task_result or "results" not in task_result or not task_result["results"]:
+            self.logger.warning(f"任务 {task_id} 不存在")
+            return []
+        
+        task_info = task_result["results"][0]
+        transcription_id = task_info.get('transcription_id')
+        
+        if not transcription_id:
+            self.logger.warning(f"任务 {task_id} 没有转录ID")
+            return []
+        
+        # 第二步：获取转录信息（用于判断 is_last）
+        trans_sql = """
+        SELECT total_segments
+        FROM transcriptions 
+        WHERE id = ?
+        """
+        
+        trans_result = await self._execute_query(trans_sql, [transcription_id])
+        total_segments = 0
+        if trans_result and "results" in trans_result and trans_result["results"]:
+            total_segments = trans_result["results"][0].get('total_segments', 0)
+        
+        # 第三步：获取所有片段
+        segments_sql = """
+        SELECT 
+            sequence,
+            start_ms,
+            end_ms,
+            content_type,
+            speaker,
+            original_text,
+            translated_text
+        FROM transcription_segments 
+        WHERE transcription_id = ? 
+        ORDER BY sequence ASC
+        """
+        
+        segments_result = await self._execute_query(segments_sql, [transcription_id])
+        
+        if not segments_result or "results" not in segments_result:
+            self.logger.warning(f"转录 {transcription_id} 没有片段数据")
+            return []
+        
+        # 直接创建 Sentence 对象，使用 Worker 字段名
+        sentences = []
+        segments = segments_result["results"]
+        
+        for idx, segment in enumerate(segments):
+            sentence = Sentence(
+                sequence=segment['sequence'],
+                start_ms=float(segment['start_ms']),
+                end_ms=float(segment['end_ms']),
+                speaker=segment['speaker'] or 'unknown',
+                original_text=segment['original_text'] or '',
+                translated_text=segment['translated_text'] or '',
+                task_id=task_id,
+                is_first=(segment['sequence'] == 1),
+                is_last=(segment['sequence'] == total_segments)
+            )
+            sentences.append(sentence)
+        
+        self.logger.info(f"获取到任务 {task_id} 的 {len(sentences)} 个句子")
+        return sentences
+    
+    async def get_worker_media_paths(self, task_id: str) -> Dict[str, str]:
+        """获取 Worker 的媒体文件路径"""
+        sql = """
+        SELECT audio_path, video_path
+        FROM media_tasks 
+        WHERE id = ?
+        """
+        
+        result = await self._execute_query(sql, [task_id])
+        
+        if not result or "results" not in result or not result["results"]:
+            return {}
+        
+        task_info = result["results"][0]
+        return {
+            'audio_path': task_info.get('audio_path', ''),
+            'video_path': task_info.get('video_path', '')
+        }

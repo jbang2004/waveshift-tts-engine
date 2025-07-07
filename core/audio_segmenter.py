@@ -72,8 +72,8 @@ class AudioSegmenter:
             for i, sentence in enumerate(sentences):
                 try:
                     # 计算时间范围（毫秒转秒）
-                    start_time = sentence.start / 1000.0
-                    end_time = sentence.end / 1000.0
+                    start_time = sentence.start_ms / 1000.0
+                    end_time = sentence.end_ms / 1000.0
                     
                     # 扩展音频片段用于语音克隆（前后各扩展1秒）
                     extended_start = max(0, start_time - 1.0)
@@ -97,7 +97,7 @@ class AudioSegmenter:
                         audio_segment = audio_data[new_start:new_end]
                     
                     # 保存音频片段
-                    audio_filename = f"sentence_{sentence.sentence_id}_{i:04d}.wav"
+                    audio_filename = f"sentence_{sentence.sequence}_{i:04d}.wav"
                     audio_prompt_path = audio_prompts_dir / audio_filename
                     
                     await asyncio.to_thread(

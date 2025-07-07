@@ -92,12 +92,12 @@ class MyIndexTTSDeployment:
                     res = await asyncio.to_thread(
                         self.tts_model.infer,
                         sentence.audio,
-                        sentence.trans_text,
+                        sentence.translated_text,
                         None,
                         False
                     )
             except Exception as e:
-                logger.error(f"TTS 错误：句子 {sentence.sentence_id}，{e}")
+                logger.error(f"TTS 错误：句子 {sentence.sequence}，{e}")
                 res = None
             
             if res is None:

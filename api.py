@@ -67,25 +67,10 @@ class TTSEngineAPI:
     @app.post("/api/start_tts")
     async def start_tts(self, task_id: str = Body(..., embed=True)):
         """
-        启动TTS合成流程
-        直接从D1获取预处理数据，从R2下载音频，进行TTS合成
+        启动TTS合成流程 - 直接使用 Worker 数据
         """
         try:
-            # 验证任务是否存在
-            task_info = await self.d1_client.get_task_info(task_id)
-            if not task_info:
-                raise HTTPException(status_code=404, detail="任务不存在")
-            
-            # 检查任务状态
-            current_status = task_info.get('status')
-            if current_status in ['processing', 'completed']:
-                return JSONResponse(content={
-                    'status': current_status,
-                    'task_id': task_id,
-                    'message': f'任务已处于{current_status}状态'
-                })
-            
-            # 启动完整TTS流水线
+            # 直接启动流水线，让 DataFetcher 处理数据获取
             self.orchestrator_handle.run_complete_tts_pipeline.remote(task_id)
             
             return JSONResponse(content={
@@ -94,8 +79,6 @@ class TTSEngineAPI:
                 'message': 'TTS合成流程已开始'
             })
             
-        except HTTPException:
-            raise
         except Exception as e:
             self.logger.error(f"启动TTS失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"启动TTS失败: {e}")
@@ -182,9 +165,36 @@ class TTSEngineAPI:
                 'start_tts': 'POST /api/start_tts',
                 'task_status': 'GET /api/task/{task_id}/status', 
                 'create_task': 'POST /api/task',
-                'health': 'GET /api/health'
+                'health': 'GET /api/health',
+                'debug': 'GET /api/debug/{task_id}'
             }
         })
+
+    @app.get("/api/debug/{task_id}")
+    async def debug_task_data(self, task_id: str):
+        """调试接口：查看任务数据"""
+        try:
+            sentences = await self.d1_client.get_transcription_segments_from_worker(task_id)
+            media_paths = await self.d1_client.get_worker_media_paths(task_id)
+            
+            return JSONResponse(content={
+                'task_id': task_id,
+                'segments_count': len(sentences),
+                'media_paths': media_paths,
+                'first_segment': {
+                    'sequence': sentences[0].sequence if sentences else None,
+                    'speaker': sentences[0].speaker if sentences else None,
+                    'start_ms': sentences[0].start_ms if sentences else None,
+                    'end_ms': sentences[0].end_ms if sentences else None,
+                    'original_text': sentences[0].original_text[:50] if sentences else None,
+                    'translated_text': sentences[0].translated_text[:50] if sentences else None,
+                } if sentences else None
+            })
+            
+        except Exception as e:
+            return JSONResponse(content={
+                'error': str(e)
+            }, status_code=500)
 
 def setup_server():
     """初始化Ray Serve服务器，部署API服务"""

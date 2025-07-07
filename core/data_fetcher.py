@@ -43,51 +43,46 @@ class DataFetcher:
     
     async def fetch_task_data(self, task_id: str) -> Dict:
         """
-        获取完整的任务数据，包括任务信息、转录数据和音频文件
+        获取任务数据 - 直接使用 Worker 数据结构
         
         Args:
             task_id: 任务ID
             
         Returns:
-            Dict: 包含任务信息、句子列表和音频文件路径的字典
+            Dict: 包含句子列表和音频文件路径的字典
         """
         try:
             self.logger.info(f"[{task_id}] 开始获取任务数据")
             
-            # 并行获取任务信息和转录数据
-            task_info_task = asyncio.create_task(self.d1_client.get_task_info(task_id))
-            transcriptions_task = asyncio.create_task(self.d1_client.get_transcriptions(task_id))
+            # 直接获取 Worker 的句子数据
+            sentences = await self.d1_client.get_transcription_segments_from_worker(task_id)
             
-            task_info, transcriptions = await asyncio.gather(task_info_task, transcriptions_task)
+            if not sentences:
+                return {"status": "error", "message": "未找到转录数据"}
             
-            if not task_info:
-                self.logger.error(f"[{task_id}] 未找到任务信息")
-                return {"status": "error", "message": "任务不存在"}
+            # 获取媒体文件路径
+            media_paths = await self.d1_client.get_worker_media_paths(task_id)
             
-            if not transcriptions:
-                self.logger.warning(f"[{task_id}] 未找到转录数据")
-                return {"status": "error", "message": "转录数据不存在"}
-            
-            # 转换为Sentence对象
-            sentences = await self.d1_client.to_sentence_objects(transcriptions, task_id)
-            
-            # 下载音频文件到本地
+            # 下载音频文件
             audio_file_path = None
-            if task_info.get('audio_path_r2'):
-                audio_file_path = await self._download_audio_file(task_id, task_info['audio_path_r2'])
+            if media_paths.get('audio_path'):
+                audio_file_path = await self._download_audio_file(
+                    task_id, media_paths['audio_path']
+                )
             
-            # 下载视频文件到本地（如果需要）
+            # 下载视频文件
             video_file_path = None
-            if task_info.get('video_path_r2'):
-                video_file_path = await self._download_video_file(task_id, task_info['video_path_r2'])
+            if media_paths.get('video_path'):
+                video_file_path = await self._download_video_file(
+                    task_id, media_paths['video_path']
+                )
             
             result = {
                 "status": "success",
-                "task_info": task_info,
                 "sentences": sentences,
                 "audio_file_path": audio_file_path,
                 "video_file_path": video_file_path,
-                "transcription_count": len(transcriptions)
+                "transcription_count": len(sentences)
             }
             
             self.logger.info(f"[{task_id}] 成功获取任务数据: {len(sentences)} 个句子")

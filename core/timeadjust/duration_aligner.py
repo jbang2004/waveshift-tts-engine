@@ -88,7 +88,7 @@ class DurationAligner:
             for i, orig_idx in enumerate(fast_indices):
                 if i < len(refined_sentences) and refined_sentences[i].generated_audio is not None:
                     result_sentences[orig_idx] = refined_sentences[i]
-                    logger.info(f"[{task_id}] 句子 {refined_sentences[i].sentence_id} 简化成功")
+                    logger.info(f"[{task_id}] 句子 {refined_sentences[i].sequence} 简化成功")
             
             # 最终对齐
             final_aligned = await asyncio.to_thread(align_batch, result_sentences)
