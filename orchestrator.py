@@ -4,13 +4,11 @@ import time
 import gc
 import torch
 from typing import List, Dict
-from pathlib import Path
 
 from ray import serve
-from ray.serve.handle import DeploymentHandle
 
 from config import get_config
-from utils.task_storage import TaskPaths
+from utils.path_manager import PathManager
 from core.cloudflare.d1_client import D1Client
 
 logger = logging.getLogger(__name__)
@@ -137,10 +135,9 @@ class MainOrchestrator:
             
             # 第三步：初始化HLS管理器
             self.logger.info(f"[{task_id}] 第3步：初始化HLS管理器")
-            task_paths = TaskPaths(self.config, task_id)
-            await asyncio.to_thread(task_paths.create_directories)
+            path_manager = PathManager(task_id)
             
-            hls_init_response = await self.hls_manager_handle.create_manager.remote(task_id, task_paths)
+            hls_init_response = await self.hls_manager_handle.create_manager.remote(task_id, path_manager)
             if not (isinstance(hls_init_response, dict) and hls_init_response.get("status") == "success"):
                 error_msg = f"HLS管理器初始化失败: {hls_init_response}"
                 await self._update_task_status(task_id, 'error', error_msg)
@@ -149,7 +146,7 @@ class MainOrchestrator:
             # 第四步：TTS处理流
             self.logger.info(f"[{task_id}] 第4步：开始TTS合成和HLS生成")
             result = await self._process_tts_stream_with_segmented_audio(
-                task_id, task_paths, segmented_sentences, video_file_path
+                task_id, path_manager, segmented_sentences, video_file_path
             )
             
             elapsed_time = time.time() - start_time
@@ -168,9 +165,12 @@ class MainOrchestrator:
             await self._update_task_status(task_id, 'error', error_msg)
             return {"status": "error", "message": error_msg}
         finally:
+            # 清理临时文件
+            if 'path_manager' in locals():
+                path_manager.cleanup()
             self._clean_memory()
 
-    async def _process_tts_stream_with_segmented_audio(self, task_id: str, task_paths: TaskPaths, 
+    async def _process_tts_stream_with_segmented_audio(self, task_id: str, path_manager: PathManager, 
                                                      sentences: List, video_file_path: str):
         """处理TTS流并生成HLS段（使用已切分的音频）"""
         added_hls_segments = 0
@@ -209,7 +209,7 @@ class MainOrchestrator:
                 # 媒体混合（需要传入视频文件路径）
                 output_segment_path = await self.media_mixer_handle.mix_media.remote(
                     sentences_batch=adjusted_batch,
-                    task_paths=task_paths,
+                    path_manager=path_manager,
                     batch_counter=batch_counter,
                     task_id=task_id,
                     video_file_path=video_file_path  # 新增参数
@@ -240,7 +240,7 @@ class MainOrchestrator:
             result = await self.hls_manager_handle.finalize_merge.remote(
                 task_id=task_id,
                 all_processed_segment_paths=processed_segment_paths,
-                task_paths=task_paths
+                path_manager=path_manager
             )
             
             if result and result.get("status") == "success":

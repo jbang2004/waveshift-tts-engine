@@ -59,7 +59,7 @@ def main():
     if not ray.is_initialized():
         ray.init(
             address="auto",
-            namespace="videotrans",
+            namespace="waveshift-tts",
             log_to_driver=True,
             ignore_reinit_error=True
         )

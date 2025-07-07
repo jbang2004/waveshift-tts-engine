@@ -190,7 +190,7 @@ def setup_server():
     """初始化Ray Serve服务器，部署API服务"""
     # 连接到Ray集群
     if not ray.is_initialized():
-        ray.init(address="auto", namespace="videotrans", ignore_reinit_error=True)
+        ray.init(address="auto", namespace="waveshift-tts", ignore_reinit_error=True)
         logger.info("已连接到Ray集群")
 
     # 检查主编排器应用

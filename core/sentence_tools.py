@@ -202,7 +202,7 @@ def _extract_segment(speech: torch.Tensor, start: int, end: int, target_samples:
         return None
 
 def extract_audio(sentences: List[Sentence], speech: torch.Tensor, sr: int, config: Config, 
-                 task_id: str = None, task_paths = None) -> List[Sentence]:
+                 task_id: str = None, path_manager = None) -> List[Sentence]:
     """
     提取每个句子的音频并保存为文件，设置句子的audio属性为文件路径。
 
@@ -212,7 +212,7 @@ def extract_audio(sentences: List[Sentence], speech: torch.Tensor, sr: int, conf
         sr: 采样率
         config: 配置对象
         task_id: 任务ID (可选)
-        task_paths: 任务路径对象 (可选)
+        path_manager: 路径管理器 (可选)
 
     Returns:
         更新了audio字段(文件路径)的句子列表
@@ -222,11 +222,11 @@ def extract_audio(sentences: List[Sentence], speech: torch.Tensor, sr: int, conf
     ignore_samples = int(0.5 * sr)  # Consider moving 0.5 to config if variable
     speech = speech.unsqueeze(0) if speech.dim() == 1 else speech # Ensure batch dim
 
-    # 获取音频保存目录 (如果 task_paths 有效且包含该属性)
+    # 获取音频保存目录 (如果 path_manager 有效)
     audio_prompts_dir = None
-    if task_paths is not None and hasattr(task_paths, 'audio_prompts_dir'):
-        audio_prompts_dir = Path(task_paths.audio_prompts_dir)
-        # 确保目录存在 (TaskPaths.create_directories 应该已经创建)
+    if path_manager is not None:
+        audio_prompts_dir = path_manager.temp.audio_prompts_dir
+        # 确保目录存在
         audio_prompts_dir.mkdir(parents=True, exist_ok=True)
 
     for i, s in enumerate(sentences):
@@ -326,7 +326,7 @@ def get_sentences(tokens: List[Token],
                   sample_rate: int = 16000,
                   config: Config = None,
                   task_id: str = None,
-                  task_paths = None) -> List[Sentence]:
+                  path_manager = None) -> List[Sentence]:
     """
     获取句子列表，包括音频提取和可选的文件保存，并在最后导出句子信息。
 
@@ -339,7 +339,7 @@ def get_sentences(tokens: List[Token],
         sample_rate: 采样率
         config: 配置
         task_id: 任务ID (可选)
-        task_paths: 任务路径对象 (可选)
+        path_manager: 路径管理器 (可选)
 
     Returns:
         句子列表
@@ -352,6 +352,6 @@ def get_sentences(tokens: List[Token],
     raw_sentences = tokens_timestamp_sentence(tokens, timestamps, sd_time_list, tokenizer, config)
     merged_sentences = merge_sentences(raw_sentences, tokenizer, input_duration, config)
     sentences_with_audio = extract_audio(merged_sentences, speech, sample_rate, config, 
-                                         task_id, task_paths)
+                                         task_id, path_manager)
 
     return sentences_with_audio

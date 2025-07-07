@@ -30,10 +30,6 @@ class Config:
     CLOUDFLARE_R2_SECRET_ACCESS_KEY = os.getenv("CLOUDFLARE_R2_SECRET_ACCESS_KEY")
     CLOUDFLARE_R2_BUCKET_NAME = os.getenv("CLOUDFLARE_R2_BUCKET_NAME")
     
-    # 兼容性配置（保留Supabase配置以便逐步迁移）
-    SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-    SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY
 
     # 音频处理配置
     BATCH_SIZE = 6
@@ -61,12 +57,6 @@ class Config:
     XAI_API_KEY = os.getenv("XAI_API_KEY", "")
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-    # 系统路径
-    SYSTEM_PATHS = [
-        str(current_dir / 'models' / 'CosyVoice'),
-        str(current_dir / 'models' / 'ClearVoice'),
-        str(current_dir / 'models' / 'CosyVoice' / 'third_party' / 'Matcha-TTS')
-    ]
 
     # 处理参数
     MAX_GAP_MS = 2000
@@ -83,18 +73,9 @@ class Config:
     MAX_PARALLEL_SEGMENTS = 2
 
     # 资源配置
-    CLEARVOICE_ACTOR_NUM_GPUS = 0.2
-    ASR_ACTOR_NUM_GPUS = 0.2
     SIMPLIFIER_ACTOR_NUM_CPUS = 0.5
-    MODELIN_ACTOR_NUM_CPUS = 0.5
     MEDIA_MIXER_ACTOR_NUM_CPUS = 0.5
 
-    # ASR配置
-    ASR_BATCH_SIZE_S = 60
-    ASR_USE_ITN = True
-    ASR_MERGE_VAD = False
-
-    COSYVOICE_MODEL_PATH = "models/CosyVoice/pretrained_models/CosyVoice2-0.5B"
 
     @classmethod
     def init_directories(cls):

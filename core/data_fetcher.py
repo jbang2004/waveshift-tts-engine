@@ -9,7 +9,7 @@ from config import get_config
 from core.cloudflare.d1_client import D1Client, TranscriptionData
 from core.cloudflare.r2_client import R2Client
 from core.sentence_tools import Sentence
-from utils.task_storage import TaskPaths
+from utils.path_manager import PathManager
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +100,8 @@ class DataFetcher:
     async def _download_audio_file(self, task_id: str, audio_path_r2: str) -> Optional[str]:
         """下载音频文件到本地"""
         try:
-            # 创建任务目录
-            task_paths = TaskPaths(self.config, task_id)
-            await asyncio.to_thread(task_paths.create_directories)
+            # 创建路径管理器
+            path_manager = PathManager(task_id)
             
             # 下载音频数据
             audio_data = await self.r2_client.download_audio(audio_path_r2)
@@ -111,7 +110,7 @@ class DataFetcher:
                 return None
             
             # 保存到本地
-            local_audio_path = task_paths.media_dir / "separated_vocals.wav"
+            local_audio_path = path_manager.temp.media_dir / "separated_vocals.wav"
             async with aiofiles.open(local_audio_path, 'wb') as f:
                 await f.write(audio_data)
             
@@ -125,9 +124,8 @@ class DataFetcher:
     async def _download_video_file(self, task_id: str, video_path_r2: str) -> Optional[str]:
         """下载视频文件到本地"""
         try:
-            # 创建任务目录
-            task_paths = TaskPaths(self.config, task_id)
-            await asyncio.to_thread(task_paths.create_directories)
+            # 创建路径管理器
+            path_manager = PathManager(task_id)
             
             # 下载视频数据
             video_data = await self.r2_client.download_video(video_path_r2)
@@ -137,7 +135,7 @@ class DataFetcher:
             
             # 保存到本地
             video_filename = Path(video_path_r2).name
-            local_video_path = task_paths.media_dir / f"silent_{video_filename}"
+            local_video_path = path_manager.temp.media_dir / f"silent_{video_filename}"
             async with aiofiles.open(local_video_path, 'wb') as f:
                 await f.write(video_data)
             

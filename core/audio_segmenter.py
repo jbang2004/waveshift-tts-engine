@@ -11,7 +11,7 @@ import tempfile
 
 from config import get_config
 from core.sentence_tools import Sentence
-from utils.task_storage import TaskPaths
+from utils.path_manager import PathManager
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +63,8 @@ class AudioSegmenter:
             self.logger.info(f"[{task_id}] 音频加载完成: {len(audio_data)/sr:.2f}秒, {sr}Hz")
             
             # 创建音频提示目录
-            task_paths = TaskPaths(self.config, task_id)
-            audio_prompts_dir = task_paths.audio_prompts_dir
+            path_manager = PathManager(task_id)
+            audio_prompts_dir = path_manager.temp.audio_prompts_dir
             audio_prompts_dir.mkdir(parents=True, exist_ok=True)
             
             # 为每个句子切分音频
@@ -164,8 +164,8 @@ class AudioSegmenter:
                 audio_data = np.mean(audio_data, axis=1)
             
             # 创建说话人样本目录
-            task_paths = TaskPaths(self.config, task_id)
-            speaker_samples_dir = task_paths.audio_prompts_dir / "speaker_samples"
+            path_manager = PathManager(task_id)
+            speaker_samples_dir = path_manager.temp.audio_prompts_dir / "speaker_samples"
             speaker_samples_dir.mkdir(parents=True, exist_ok=True)
             
             speaker_samples = {}

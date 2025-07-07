@@ -12,8 +12,7 @@ from utils.audio_utils import apply_fade_effect, mix_with_background, normalize_
 from utils.video_utils import add_video_segment 
 from config import Config
 from core.sentence_tools import Sentence
-from utils.task_storage import TaskPaths
-from core.supabase_client import SupabaseClient
+from utils.path_manager import PathManager
 
 # 使用全局日志配置，直接获取 logger
 logger = logging.getLogger(__name__)
@@ -33,14 +32,13 @@ class MediaMixer:
         self.sample_rate = self.config.TARGET_SR
         self.max_val = 0.8  # 音频最大值
         self.logger = logging.getLogger(__name__)
-        self.supabase_client = SupabaseClient(config=self.config)
         self.logger.info(f"MediaMixerActor初始化完成，采样率={self.sample_rate}")
         self.full_audio_buffer = np.array([], dtype=np.float32)  # 保留音频缓冲区，用于平滑过渡
     
     async def mix_media(
         self,
         sentences_batch: List[Sentence],
-        task_paths: TaskPaths,
+        path_manager: PathManager,
         batch_counter: int,
         task_id: str
     ) -> Optional[str]:
@@ -97,7 +95,7 @@ class MediaMixer:
             
             logger.info(f"[{task_id}] 开始处理批次 {batch_counter}, 句子数 {len(sentences_batch)}, 目标语言: {target_language}")
             
-            output_path = task_paths.segments_dir / f"segment_{batch_counter}.mp4"
+            output_path = path_manager.temp.segments_dir / f"segment_{batch_counter}.mp4"
             output_path.parent.mkdir(parents=True, exist_ok=True)
             
             max_val = 1.0
@@ -105,7 +103,6 @@ class MediaMixer:
             success, updated_buffer = await create_mixed_segment(
                 sentences=sentences_batch,
                 media_files=media_files,
-                task_paths=task_paths,
                 output_path=str(output_path),
                 generate_subtitle=generate_subtitle,
                 config=self.config,
@@ -140,7 +137,6 @@ class MediaMixer:
 async def create_mixed_segment(
     sentences: List[Sentence],
     media_files: dict,
-    task_paths: TaskPaths,
     output_path: str,
     generate_subtitle: bool,
     config: Config,

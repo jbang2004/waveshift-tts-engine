@@ -9,7 +9,6 @@ from typing import List, AsyncGenerator, Optional, Union
 import torch
 import numpy as np
 from ray import serve
-from core.supabase_client import SupabaseClient
 
 # 全局 logger
 logger = logging.getLogger(__name__)

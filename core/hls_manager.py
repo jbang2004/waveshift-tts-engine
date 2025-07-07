@@ -11,7 +11,7 @@ from ray import serve
 
 import aiofiles
 from utils.ffmpeg_utils import hls_segment, concat_videos
-from utils.task_storage import TaskPaths
+from utils.path_manager import PathManager
 from config import Config
 from core.cloudflare.d1_client import D1Client
 from core.cloudflare.r2_hls_storage_manager import R2HLSStorageManager
@@ -46,13 +46,13 @@ class HLSManager:
         
         self.logger.info("HLS管理器已初始化")
 
-    async def create_manager(self, task_id: str, task_paths: TaskPaths) -> Dict:
+    async def create_manager(self, task_id: str, path_manager: PathManager) -> Dict:
         """
         为特定任务创建HLS管理器
         
         Args:
             task_id: 任务ID
-            task_paths: 任务路径信息
+            path_manager: 路径管理器
             
         Returns:
             Dict: 包含状态信息的字典
@@ -67,8 +67,8 @@ class HLSManager:
         
         async with self.locks[task_id]:
             try:
-                playlist_path = Path(task_paths.playlist_path)
-                segments_dir = Path(task_paths.segments_dir)
+                playlist_path = path_manager.temp.get_temp_file(suffix=".m3u8", prefix="playlist_")
+                segments_dir = path_manager.temp.segments_dir
                 
                 # 创建播放列表
                 playlist = m3u8.M3U8()
@@ -103,7 +103,7 @@ class HLSManager:
                 
                 # 存储任务管理信息
                 self.task_managers[task_id] = {
-                    "task_paths": task_paths,
+                    "path_manager": path_manager,
                     "playlist_path": playlist_path,
                     "segments_dir": segments_dir,
                     "playlist": playlist,
@@ -239,7 +239,7 @@ class HLSManager:
                 playlist = manager["playlist"]
                 sequence_number = manager["sequence_number"]
                 segment_time = manager["segment_time"]
-                task_paths = manager["task_paths"]
+                path_manager = manager["path_manager"]
                 
                 was_first_segment = not manager["has_segments"]
 
@@ -248,7 +248,7 @@ class HLSManager:
 
                 segment_filename = f'segment_{sequence_number:04d}_%03d.ts'
                 segment_pattern = str(segments_dir / segment_filename)
-                temp_playlist_path = task_paths.processing_dir / f'temp_{part_index}.m3u8'
+                temp_playlist_path = path_manager.temp.processing_dir / f'temp_{part_index}.m3u8'
 
                 # 使用异步函数
                 await hls_segment(
@@ -400,7 +400,7 @@ class HLSManager:
         self.logger.info(f"已清理 {cleaned_count} 个过期任务的HLS资源")
         return {"status": "success", "cleaned_count": cleaned_count}
 
-    async def finalize_merge(self, task_id: str, all_processed_segment_paths: List[str], task_paths: TaskPaths) -> Dict:
+    async def finalize_merge(self, task_id: str, all_processed_segment_paths: List[str], path_manager: PathManager) -> Dict:
         """最终化任务处理：结束播放列表，合并片段，并更新数据库状态"""
         self.logger.info(f"[{task_id}] HLSManager: 开始最终化任务处理，包含 {len(all_processed_segment_paths)} 个片段。")
 
@@ -424,11 +424,12 @@ class HLSManager:
 
         try:
             # 确保输出目录存在
-            task_paths.output_dir.mkdir(parents=True, exist_ok=True)
-            self.logger.info(f"[{task_id}] HLSManager: 确保输出目录存在: {task_paths.output_dir}")
+            output_dir = path_manager.temp.get_subdir("output")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            self.logger.info(f"[{task_id}] HLSManager: 确保输出目录存在: {output_dir}")
             
             # 创建合并列表文件
-            list_txt_path = task_paths.processing_dir / "concat_list.txt"
+            list_txt_path = path_manager.temp.processing_dir / "concat_list.txt"
             async with aiofiles.open(list_txt_path, "w", encoding='utf-8') as f:
                 for seg_mp4 in all_processed_segment_paths:
                     # 确保路径是绝对的并且格式正确
@@ -437,7 +438,7 @@ class HLSManager:
             self.logger.info(f"[{task_id}] HLSManager: 合并列表文件已创建: {list_txt_path}")
 
             # 执行视频合并
-            final_output_path = task_paths.output_dir / f"final_{task_id}.mp4"
+            final_output_path = output_dir / f"final_{task_id}.mp4"
             merge_start_time = time.time()
             self.logger.info(f"[{task_id}] HLSManager: 开始调用 concat_videos, 输出到 {final_output_path}")
             
