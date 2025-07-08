@@ -8,7 +8,6 @@ import time
 import gc
 import torch
 from typing import Dict
-from ray import serve
 
 from config import get_config
 from core.cloudflare.d1_client import D1Client
@@ -17,27 +16,10 @@ from core.pipeline import TTSPipeline
 logger = logging.getLogger(__name__)
 
 
-@serve.deployment(
-    name="MainOrchestratorDeployment",
-    num_replicas=1,
-    ray_actor_options={"num_cpus": 0.5},
-    logging_config={"log_level": "INFO"}
-)
 class MainOrchestrator:
     """优化后的主编排器 - 使用流水线模式简化代码"""
     
-    # 服务配置表 - 从原版复制，保持一致
-    SERVICE_CONFIGS = [
-        ("data_fetcher", "data_fetcher", "DataFetcherApp", {}),
-        ("audio_segmenter", "audio_segmenter", "AudioSegmenterApp", {}),
-        ("tts", "my_index_tts", "TTSApp", {"stream": True}),
-        ("duration_aligner", "duration_aligner", "DurationAlignerApp", {}),
-        ("timestamp_adjuster", "timestamp_adjuster", "TimestampAdjusterApp", {}),
-        ("media_mixer", "media_mixer", "MediaMixerApp", {}),
-        ("hls_manager", "hls_manager", "HLSManagerApp", {})
-    ]
-    
-    def __init__(self):
+    def __init__(self, services: Dict = None):
         self.logger = logger
         self.config = get_config()
         
@@ -48,30 +30,14 @@ class MainOrchestrator:
             database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
         )
         
-        # 初始化所有服务句柄
-        self.services = self._init_all_services()
+        # 使用传入的服务实例
+        self.services = services or {}
         
         # 创建TTS流水线
         self.tts_pipeline = TTSPipeline.create(self.services, self.config)
         
-        self.logger.info("MainOrchestrator初始化完成，所有服务句柄已就绪")
+        self.logger.info("MainOrchestrator初始化完成，所有服务实例已就绪")
     
-    def _init_all_services(self) -> Dict:
-        """初始化所有服务句柄"""
-        services = {}
-        
-        for attr_name, deployment_name, app_name, options in self.SERVICE_CONFIGS:
-            try:
-                handle = serve.get_deployment_handle(deployment_name, app_name=app_name)
-                if options:
-                    handle = handle.options(**options)
-                services[attr_name] = handle
-                self.logger.info(f"成功初始化服务: {attr_name}")
-            except Exception as e:
-                self.logger.error(f"初始化服务 {attr_name} 失败: {e}")
-                raise RuntimeError(f"服务句柄初始化失败: {attr_name}")
-        
-        return services
     
     async def run_complete_tts_pipeline(self, task_id: str) -> Dict:
         """

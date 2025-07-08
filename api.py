@@ -30,65 +30,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 全局 D1Client 实例
-d1_client = D1Client(
-    account_id=config.CLOUDFLARE_ACCOUNT_ID,
-    api_token=config.CLOUDFLARE_API_TOKEN,
-    database_id=config.CLOUDFLARE_D1_DATABASE_ID
-)
+# 全局服务管理器实例
+service_manager = None
+orchestrator = None
+d1_client = None
+
+def initialize_services():
+    """初始化服务"""
+    global service_manager, orchestrator, d1_client
+    from launcher import create_service_manager
+    
+    service_manager = create_service_manager()
+    orchestrator = service_manager.get_service('orchestrator')
+    d1_client = D1Client(
+        account_id=config.CLOUDFLARE_ACCOUNT_ID,
+        api_token=config.CLOUDFLARE_API_TOKEN,
+        database_id=config.CLOUDFLARE_D1_DATABASE_ID
+    )
 
 @app.on_event("startup")
-async def startup_d1():
-    """FastAPI 启动时初始化 D1 客户端"""
-    logger.info("D1客户端已初始化")
+async def startup_services():
+    """启动时初始化所有服务"""
+    initialize_services()
+    logger.info("所有服务初始化完成")
 
-@serve.deployment(
-    num_replicas=1,
-    ray_actor_options={"num_cpus": 0.5}
-)
-@serve.ingress(app)
-class TTSEngineAPI:
-    """TTS引擎API服务"""
-    def __init__(self):
-        self.logger = logger
-        self.config = config
-        self.d1_client = d1_client
+@app.post("/api/start_tts")
+async def start_tts(task_id: str = Body(..., embed=True)):
+    """
+    启动TTS合成流程 - 直接使用 Worker 数据
+    """
+    try:
+        # 直接启动流水线，让 DataFetcher 处理数据获取
+        asyncio.create_task(orchestrator.run_complete_tts_pipeline(task_id))
         
-        try:
-            self.orchestrator_handle = serve.get_deployment_handle(
-                "MainOrchestratorDeployment", 
-                app_name="MainOrchestratorApp"
-            )
-            self.logger.info("TTSEngineAPI初始化完成")
-        except Exception as e:
-            self.logger.error(f"TTSEngineAPI初始化失败: {e}", exc_info=True)
-            raise RuntimeError(f"无法连接到MainOrchestrator: {e}")
-
-    @app.post("/api/start_tts")
-    async def start_tts(self, task_id: str = Body(..., embed=True)):
-        """
-        启动TTS合成流程 - 直接使用 Worker 数据
-        """
-        try:
-            # 直接启动流水线，让 DataFetcher 处理数据获取
-            self.orchestrator_handle.run_complete_tts_pipeline.remote(task_id)
-            
-            return JSONResponse(content={
-                'status': 'processing', 
-                'task_id': task_id, 
-                'message': 'TTS合成流程已开始'
-            })
-            
-        except Exception as e:
-            self.logger.error(f"启动TTS失败: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"启动TTS失败: {e}")
+        return JSONResponse(content={
+            'status': 'processing', 
+            'task_id': task_id, 
+            'message': 'TTS合成流程已开始'
+        })
+        
+    except Exception as e:
+        logger.error(f"启动TTS失败: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"启动TTS失败: {e}")
 
     @app.get("/api/task/{task_id}/status")
     async def get_task_status(self, task_id: str):
         """获取任务状态和HLS播放列表URL"""
         try:
             # 通过编排器获取任务状态（包含更丰富的信息）
-            status_result = await self.orchestrator_handle.get_task_status.remote(task_id)
+            status_result = await orchestrator.get_task_status(task_id)
             
             if status_result["status"] != "success":
                 raise HTTPException(status_code=404, detail=status_result.get("message", "任务不存在"))
@@ -103,11 +93,11 @@ class TTSEngineAPI:
         except HTTPException:
             raise
         except Exception as e:
-            self.logger.error(f"获取任务状态失败: {e}", exc_info=True)
+            logger.error(f"获取任务状态失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"获取任务状态失败: {e}")
 
-    @app.post("/api/task")
-    async def create_task(self, request: Dict[str, Any] = Body(...)):
+@app.post("/api/task")
+async def create_task(request: Dict[str, Any] = Body(...)):
         """
         创建新任务（可选接口，用于外部系统集成）
         """
@@ -130,32 +120,33 @@ class TTSEngineAPI:
         except HTTPException:
             raise
         except Exception as e:
-            self.logger.error(f"创建任务失败: {e}", exc_info=True)
+            logger.error(f"创建任务失败: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"创建任务失败: {e}")
 
-    @app.get("/api/health")
-    async def health_check(self):
+@app.get("/api/health")
+async def health_check():
         """健康检查接口"""
         try:
-            # 检查D1连接
-            # 这里可以添加简单的D1查询测试
-            
-            # 检查Ray Serve连接
-            ray_status = ray.is_initialized()
+            # 检查服务状态
+            services_status = {}
+            if service_manager:
+                services = service_manager.get_all_services()
+                for name, service in services.items():
+                    services_status[name] = service is not None
             
             return JSONResponse(content={
                 'status': 'healthy',
-                'ray_initialized': ray_status,
+                'services': services_status,
                 'timestamp': asyncio.get_event_loop().time(),
                 'version': '2.0.0'
             })
             
         except Exception as e:
-            self.logger.error(f"健康检查失败: {e}")
+            logger.error(f"健康检查失败: {e}")
             raise HTTPException(status_code=503, detail=f"服务不健康: {e}")
 
-    @app.get("/")
-    async def root(self):
+@app.get("/")
+async def root():
         """根路径"""
         return JSONResponse(content={
             'name': 'WaveShift TTS Engine',
@@ -170,12 +161,12 @@ class TTSEngineAPI:
             }
         })
 
-    @app.get("/api/debug/{task_id}")
-    async def debug_task_data(self, task_id: str):
+@app.get("/api/debug/{task_id}")
+async def debug_task_data(task_id: str):
         """调试接口：查看任务数据"""
         try:
-            sentences = await self.d1_client.get_transcription_segments_from_worker(task_id)
-            media_paths = await self.d1_client.get_worker_media_paths(task_id)
+            sentences = await d1_client.get_transcription_segments_from_worker(task_id)
+            media_paths = await d1_client.get_worker_media_paths(task_id)
             
             return JSONResponse(content={
                 'task_id': task_id,
@@ -196,25 +187,14 @@ class TTSEngineAPI:
                 'error': str(e)
             }, status_code=500)
 
-def setup_server():
-    """初始化Ray Serve服务器，部署API服务"""
-    # 连接到Ray集群
-    if not ray.is_initialized():
-        ray.init(address="auto", namespace="waveshift-tts", ignore_reinit_error=True)
-        logger.info("已连接到Ray集群")
-
-    # 检查主编排器应用
-    try:
-        serve.get_app_handle("MainOrchestratorApp")
-        logger.info("成功连接到 MainOrchestratorApp")
-    except Exception as e:
-        logger.error(f"连接 MainOrchestratorApp 失败: {e}")
-        raise RuntimeError(f"无法连接到核心应用: {e}")
-
-    # 部署API服务
-    tts_api = TTSEngineAPI.bind()
-    serve.run(tts_api, name="TTSAPI", route_prefix="/", blocking=True)
-    logger.info("TTS API服务部署完成")
+def run_server():
+    """运行标准的FastAPI服务器"""
+    uvicorn.run(
+        app, 
+        host=config.SERVER_HOST, 
+        port=config.SERVER_PORT,
+        log_level="info"
+    )
 
 if __name__ == "__main__":
-    setup_server()
+    run_server()

@@ -4,7 +4,6 @@
 import numpy as np
 import logging
 from typing import List, Optional, Tuple
-from ray import serve
 import asyncio
 
 # Ray tasks imported directly
@@ -17,12 +16,6 @@ from utils.path_manager import PathManager
 # 使用全局日志配置，直接获取 logger
 logger = logging.getLogger(__name__)
 
-@serve.deployment(
-    name="media_mixer",
-    ray_actor_options={"num_cpus": 1},
-    num_replicas=2,  # 添加多个实例以提高吞吐量
-    logging_config={"log_level": "INFO"}
-)
 class MediaMixer:
     """
     媒体混合，负责混合音频和视频

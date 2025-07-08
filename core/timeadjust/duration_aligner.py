@@ -1,4 +1,3 @@
-from ray import serve
 import logging
 import asyncio
 from config import get_config
@@ -8,19 +7,14 @@ from utils.duration_utils import apply_speed_and_silence, align_batch
 
 logger = logging.getLogger(__name__)
 
-@serve.deployment(
-    name="duration_aligner",
-    ray_actor_options={"num_cpus": 1},
-    logging_config={"log_level": "INFO"}
-)
 class DurationAligner:
-    def __init__(self):
+    def __init__(self, simplifier=None, index_tts=None):
         self.config = get_config()
         self.sample_rate = self.config.TARGET_SR
         
-        # 获取服务句柄
-        self.simplifier = serve.get_deployment_handle("simplifier", app_name="SimplifierApp")
-        self.index_tts = serve.get_deployment_handle("my_index_tts", app_name="TTSApp").options(stream=True)
+        # 接受服务实例作为参数
+        self.simplifier = simplifier
+        self.index_tts = index_tts
         
         logger.info("时长对齐器初始化完成")
 
@@ -106,7 +100,7 @@ class DurationAligner:
         """简化句子文本"""
         try:
             logger.info(f"[{task_id}] 开始简化 {len(fast_sentences)} 个句子")
-            simplified_results = await self.simplifier.simplify_sentences.remote(
+            simplified_results = await self.simplifier.simplify_sentences(
                 fast_sentences, 
                 target_speed=max_speed
             )
@@ -121,7 +115,7 @@ class DurationAligner:
         refined_sentences = []
         try:
             logger.info(f"[{task_id}] 开始重新生成 {len(simplified_results)} 个句子的音频")
-            async for tts_batch in self.index_tts.generate_audio_stream.options(stream=True).remote(simplified_results):
+            async for tts_batch in self.index_tts.generate_audio_stream(simplified_results):
                 if tts_batch:
                     refined_sentences.extend(tts_batch)
             logger.info(f"[{task_id}] 音频重新生成完成，获得 {len(refined_sentences)} 个句子")

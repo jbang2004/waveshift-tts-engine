@@ -1,7 +1,6 @@
 import logging
 import asyncio
 from typing import List, Dict, Optional, Tuple
-from ray import serve
 from pathlib import Path
 import aiofiles
 
@@ -13,11 +12,6 @@ from utils.path_manager import PathManager
 
 logger = logging.getLogger(__name__)
 
-@serve.deployment(
-    name="data_fetcher",
-    ray_actor_options={"num_cpus": 1},
-    logging_config={"log_level": "INFO"}
-)
 class DataFetcher:
     """数据获取服务 - 从Cloudflare D1和R2获取任务数据"""
     

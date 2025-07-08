@@ -23,7 +23,6 @@ PyYAML
 Requests
 scipy
 setuptools
-soundfile
 tiktoken
 torchinfo
 tqdm
@@ -32,10 +31,9 @@ Unidecode
 wget
 yamlargparse
 google.generativeai
-ray[default]
-ray[serve]
+fastapi
+uvicorn
 rotary_embedding_torch
-librosa
 pydub
 boto3
 httpx

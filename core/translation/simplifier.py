@@ -1,8 +1,6 @@
 import asyncio
 import logging
 from typing import Dict, List, Optional, TypeVar, Any
-import ray
-from ray import serve
 from .prompt import (
     SIMPLIFICATION_SYSTEM_PROMPT,
     SIMPLIFICATION_USER_PROMPT
@@ -17,12 +15,6 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar('T')
 
-@serve.deployment(
-    name="simplifier",
-    ray_actor_options={"num_cpus": 1},
-    num_replicas=1,
-    logging_config={"log_level": "INFO"}
-)
 class Simplifier:
     # 简化等级常量
     SIMPLIFICATION_LEVELS = ["minimal", "slight", "moderate", "significant", "extreme"]

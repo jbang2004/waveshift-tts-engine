@@ -41,6 +41,12 @@ class Config:
     AUDIO_OVERLAP = 1024
     SILENCE_FADE_MS = 25
     NORMALIZATION_THRESHOLD = 0.9
+    
+    # 音频切片配置
+    AUDIO_CLIP_GOAL_DURATION_MS = 12000  # 目标片段时长12秒
+    AUDIO_CLIP_MIN_DURATION_MS = 1000    # 最小片段时长1秒
+    AUDIO_CLIP_PADDING_MS = 200          # 切片padding时长200ms
+    AUDIO_CLIP_ALLOW_CROSS_NON_SPEECH = False  # 是否允许跨越非speech片段合并
 
     # HLS配置
     ENABLE_HLS_STORAGE = os.getenv("ENABLE_HLS_STORAGE", "true").lower() == "true"

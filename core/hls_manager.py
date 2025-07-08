@@ -7,7 +7,6 @@ import time
 import asyncio
 from pathlib import Path
 from typing import Union, Optional, Dict, List
-from ray import serve
 
 import aiofiles
 from utils.ffmpeg_utils import hls_segment, concat_videos
@@ -18,10 +17,6 @@ from core.cloudflare.r2_hls_storage_manager import R2HLSStorageManager
 
 logger = logging.getLogger(__name__)
 
-@serve.deployment(
-    name="hls_manager",
-    logging_config={"log_level": "INFO"}
-)
 class HLSManager:
     """HLS流媒体管理器 - 支持多任务管理"""
     def __init__(self):

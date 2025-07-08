@@ -8,20 +8,13 @@ from typing import List, AsyncGenerator
 
 import torch
 import numpy as np
-from ray import serve
 
 # 全局 logger
 logger = logging.getLogger(__name__)
 
-@serve.deployment(
-    name="my_index_tts",
-    ray_actor_options={"num_cpus": 1, "num_gpus": 0.4},
-    max_ongoing_requests=2,
-    logging_config={"log_level": "INFO"}
-)
 class MyIndexTTSDeployment:
     """
-    Ray Serve 部署，提供流式 TTS 服务。
+    提供流式 TTS 服务
     """
     def __init__(self, config=None):
         # 确保在新进程中可以正确导入indextts模块

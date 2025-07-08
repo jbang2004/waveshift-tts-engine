@@ -1,7 +1,6 @@
 import sys
 import logging
-import ray
-from ray import serve
+from typing import Dict, Any
 from config import get_config, init_logging
 
 logger = logging.getLogger(__name__)
@@ -16,35 +15,71 @@ from core.timeadjust.timestamp_adjuster import TimestampAdjuster
 from core.media_mixer import MediaMixer
 from core.hls_manager import HLSManager
 from orchestrator import MainOrchestrator
-from api import setup_server as setup_api_server
 
-def deploy_core_services():
-    """部署所有核心服务"""
-    config = get_config()
+
+class ServiceManager:
+    """服务管理器 - 替代Ray Serve的服务管理"""
     
-    # 服务配置映射
-    services = [
-        ("DataFetcherApp", DataFetcher.bind()),
-        ("AudioSegmenterApp", AudioSegmenter.bind()),
-        ("SimplifierApp", Simplifier.bind()),
-        ("TTSApp", MyIndexTTSDeployment.bind(config)),
-        ("DurationAlignerApp", DurationAligner.bind()),
-        ("TimestampAdjusterApp", TimestampAdjuster.bind()),
-        ("MediaMixerApp", MediaMixer.bind()),
-        ("HLSManagerApp", HLSManager.bind()),
-        ("MainOrchestratorApp", MainOrchestrator.bind())
-    ]
-    
-    # 批量部署服务
-    for app_name, app_instance in services:
+    def __init__(self, config):
+        self.config = config
+        self.logger = logger
+        self.services = {}
+        
+    def initialize_services(self):
+        """初始化所有核心服务"""
         try:
-            serve.run(app_instance, name=app_name, route_prefix=None)
-            logger.info(f"{app_name} 部署成功")
+            # 初始化服务实例
+            self.services['data_fetcher'] = DataFetcher()
+            self.services['audio_segmenter'] = AudioSegmenter()
+            self.services['simplifier'] = Simplifier()
+            self.services['tts'] = MyIndexTTSDeployment(self.config)
+            # \u521d\u59cb\u5316\u6709\u4f9d\u8d56\u7684\u670d\u52a1\uff08\u5728\u5176\u4f9d\u8d56\u670d\u52a1\u4e4b\u540e\uff09
+            self.services['duration_aligner'] = DurationAligner(
+                simplifier=self.services['simplifier'],
+                index_tts=self.services['tts']
+            )
+            self.services['timestamp_adjuster'] = TimestampAdjuster()
+            self.services['media_mixer'] = MediaMixer()
+            self.services['hls_manager'] = HLSManager()
+            
+            # 最后初始化编排器，注入所有服务依赖
+            self.services['orchestrator'] = MainOrchestrator(self.services)
+            
+            self.logger.info("所有核心服务初始化完成")
+            
+            # 验证服务实例
+            for service_name, service_instance in self.services.items():
+                if service_instance is None:
+                    raise RuntimeError(f"服务 {service_name} 初始化失败")
+                    
         except Exception as e:
-            logger.critical(f"{app_name} 部署失败: {e}", exc_info=True)
+            self.logger.critical(f"服务初始化失败: {e}", exc_info=True)
             raise
+    
+    def get_service(self, name: str) -> Any:
+        """获取服务实例"""
+        return self.services.get(name)
+    
+    def get_all_services(self) -> Dict[str, Any]:
+        """获取所有服务实例"""
+        return self.services.copy()
+    
+    def cleanup(self):
+        """清理所有服务"""
+        for service_name, service_instance in self.services.items():
+            if hasattr(service_instance, 'cleanup'):
+                try:
+                    service_instance.cleanup()
+                    self.logger.info(f"服务 {service_name} 清理完成")
+                except Exception as e:
+                    self.logger.warning(f"服务 {service_name} 清理失败: {e}")
+        
+        self.services.clear()
+        self.logger.info("所有服务清理完成")
 
-def main():
+
+def create_service_manager():
+    """创建服务管理器"""
     # 初始化配置和日志
     init_logging()
     config = get_config()
@@ -55,38 +90,23 @@ def main():
         sys.path.extend(config.SYSTEM_PATHS)
         logger.info(f"系统路径已扩展: {config.SYSTEM_PATHS}")
 
-    # 初始化Ray
-    if not ray.is_initialized():
-        ray.init(
-            address="auto",
-            namespace="waveshift-tts",
-            log_to_driver=True,
-            ignore_reinit_error=True
-        )
-    logger.info(f"Ray初始化完成: {ray.get_runtime_context().gcs_address}")
+    # 创建服务管理器并初始化服务
+    service_manager = ServiceManager(config)
+    service_manager.initialize_services()
+    
+    return service_manager
 
-    # 启动Ray Serve
-    serve.start(
-        detached=False,
-        http_options={"host": config.SERVER_HOST, "port": config.SERVER_PORT}
-    )
-    logger.info(f"Ray Serve启动完成，端口: {config.SERVER_PORT}")
 
-    # 部署核心服务
+def main():
+    """主函数 - 创建服务管理器"""
     try:
-        deploy_core_services()
-        logger.info("所有核心服务部署完成")
+        service_manager = create_service_manager()
+        logger.info("服务管理器创建完成")
+        return service_manager
     except Exception as e:
-        logger.critical(f"核心服务部署失败: {e}")
-        return
+        logger.critical(f"服务管理器创建失败: {e}")
+        raise
 
-    # 启动API服务器
-    try:
-        logger.info("启动API服务器...")
-        setup_api_server()
-        logger.info("API服务器启动完成")
-    except Exception as e:
-        logger.critical(f"API服务器启动失败: {e}")
 
 if __name__ == "__main__":
     main() 

@@ -1,0 +1,1157 @@
+{
+  "task_id": "53ee90f3-a2d3-46df-8a9a-0bf98b8c5879",
+  "total_sentences": 86,
+  "total_clips": 32,
+  "clips_library": {
+    "Clip_1": {
+      "speaker": "Speaker A",
+      "total_duration_ms": 3760,
+      "segments_to_concatenate": [
+        [
+          0,
+          3760
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 1,
+          "original": "还有你的绯闻。 还有你的绯闻，就是说你和这个王总。",
+          "translation": "And your scandal. And your scandal, meaning you and this Mr. Wang.",
+          "original_time": [
+            110,
+            3560
+          ]
+        }
+      ]
+    },
+    "Clip_2": {
+      "speaker": "Speaker B",
+      "total_duration_ms": 6530,
+      "segments_to_concatenate": [
+        [
+          3620,
+          10150
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 2,
+          "original": "这这样一个话题的背后，你想我会跟你发生关系吗？",
+          "translation": "Behind a topic like this, do you think I would have a relationship with you?",
+          "original_time": [
+            3820,
+            9950
+          ]
+        }
+      ]
+    },
+    "Clip_3": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 7260,
+      "segments_to_concatenate": [
+        [
+          10130,
+          11720
+        ],
+        [
+          12450,
+          18120
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 3,
+          "original": "我看到不看。",
+          "translation": "I don't even look.",
+          "original_time": [
+            10330,
+            11520
+          ]
+        },
+        {
+          "sequence": 4,
+          "original": "我觉得无所谓，现在就是我们的王总来我告诉大家，这是大家社会公认的小鲜肉。",
+          "translation": "I think it doesn't matter. Now, Mr. Wang is here, and I'll tell everyone, he's the young idol recognized by society.",
+          "original_time": [
+            12650,
+            17920
+          ]
+        }
+      ]
+    },
+    "Clip_4": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 1560,
+      "segments_to_concatenate": [
+        [
+          20020,
+          21580
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 6,
+          "original": "从一个网红。",
+          "translation": "From an internet celebrity.",
+          "original_time": [
+            20220,
+            21380
+          ]
+        }
+      ]
+    },
+    "Clip_5": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 1110,
+      "segments_to_concatenate": [
+        [
+          21870,
+          22980
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 7,
+          "original": "过气网红。",
+          "translation": "An outdated internet celebrity.",
+          "original_time": [
+            22070,
+            22780
+          ]
+        }
+      ]
+    },
+    "Clip_6": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 4550,
+      "segments_to_concatenate": [
+        [
+          23010,
+          27560
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 8,
+          "original": "然后到了这个企业。",
+          "translation": "And then to this company.",
+          "original_time": [
+            23210,
+            25790
+          ]
+        },
+        {
+          "sequence": 9,
+          "original": "有多长时间了？我看，两年。",
+          "translation": "How long has it been? Let me see, two years.",
+          "original_time": [
+            25790,
+            27360
+          ]
+        }
+      ]
+    },
+    "Clip_7": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 2550,
+      "segments_to_concatenate": [
+        [
+          27310,
+          29860
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 10,
+          "original": "两年多了，快两年半了。",
+          "translation": "More than two years, almost two and a half years.",
+          "original_time": [
+            27510,
+            29660
+          ]
+        }
+      ]
+    },
+    "Clip_8": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 2400,
+      "segments_to_concatenate": [
+        [
+          29970,
+          32370
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 11,
+          "original": "这两年多你觉得你今天有什么样的变化？",
+          "translation": "In the past two years, what changes do you think you've experienced?",
+          "original_time": [
+            30170,
+            32170
+          ]
+        }
+      ]
+    },
+    "Clip_9": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 10080,
+      "segments_to_concatenate": [
+        [
+          32430,
+          42510
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 12,
+          "original": "我觉得这个适应和变化的过程对我来说其实是一个挺美妙，但是也挺需要去努力适应的一个过程。",
+          "translation": "I think the process of adaptation and change has actually been a wonderful but also quite challenging process that requires effort to adapt to.",
+          "original_time": [
+            32630,
+            42310
+          ]
+        }
+      ]
+    },
+    "Clip_10": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 11430,
+      "segments_to_concatenate": [
+        [
+          42480,
+          53910
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 13,
+          "original": "但是也有很多人会说，哎哟，看，董明珠给了他一个多好的机会。",
+          "translation": "But many people will say, oh, look, Dong Mingzhu gave him such a great opportunity.",
+          "original_time": [
+            42680,
+            47320
+          ]
+        },
+        {
+          "sequence": 14,
+          "original": "很多人都会觉得，哎呀，这个机会我也很羡慕。",
+          "translation": "Many people would feel, oh, I'm also very envious of this opportunity.",
+          "original_time": [
+            47320,
+            50380
+          ]
+        },
+        {
+          "sequence": 15,
+          "original": "但是也有人会说，你看，这个人是趁这个格力流量的。",
+          "translation": "But some people would say, look, this person is taking advantage of Gree's traffic.",
+          "original_time": [
+            50610,
+            55390
+          ]
+        }
+      ]
+    },
+    "Clip_11": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 7310,
+      "segments_to_concatenate": [
+        [
+          57510,
+          59790
+        ],
+        [
+          59910,
+          64940
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 17,
+          "original": "有有有，小鲜肉是吧。",
+          "translation": "Yes, yes, yes, a young idol, right?",
+          "original_time": [
+            57710,
+            59590
+          ]
+        },
+        {
+          "sequence": 18,
+          "original": "然后这个说我这个过来凑流量，度个金，两年就走了，对吧？",
+          "translation": "And then they say I came here to gain traffic, get some gold, and then leave in two years, right?",
+          "original_time": [
+            60110,
+            64740
+          ]
+        }
+      ]
+    },
+    "Clip_12": {
+      "speaker": "Speaker E",
+      "total_duration_ms": 5150,
+      "segments_to_concatenate": [
+        [
+          64930,
+          70080
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 19,
+          "original": "他不是说倒格力来是创流量，倒格力来说捞一把，他不是的。",
+          "translation": "He didn't say he came to Gree for traffic, or to make a quick buck. He's not like that.",
+          "original_time": [
+            65130,
+            69880
+          ]
+        }
+      ]
+    },
+    "Clip_13": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 12000,
+      "segments_to_concatenate": [
+        [
+          70270,
+          74360
+        ],
+        [
+          74430,
+          82340
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 20,
+          "original": "我觉得我我其实这两年时间里边不太关注大家怎么评价我。",
+          "translation": "I think I haven't really paid attention to how people evaluate me during these past two years.",
+          "original_time": [
+            70470,
+            74160
+          ]
+        },
+        {
+          "sequence": 21,
+          "original": "我觉得我们在在格力的每一个人终究有一天会离开这家企业的，但是当你有一天终究离开这家企业的时候，你回头看，你到底为这家企业留下了什么，这是我在乎的事。",
+          "translation": "I believe that everyone at Gree will eventually leave this company one day. But when you finally leave this company, you'll look back and see what you've left behind for it. That's what I care about.",
+          "original_time": [
+            74630,
+            85740
+          ]
+        }
+      ]
+    },
+    "Clip_14": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 11270,
+      "segments_to_concatenate": [
+        [
+          113310,
+          124580
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 27,
+          "original": "因为在过去这些年当中，我们其实看到格力其实容赖了包括你在类的，还有好几个网红，然后有的网红离开了，然后但是你还留在这。",
+          "translation": "Because in the past few years, we've actually seen that Gree has tolerated several internet celebrities, including you. Some internet celebrities have left, but you're still here.",
+          "original_time": [
+            113510,
+            124380
+          ]
+        }
+      ]
+    },
+    "Clip_15": {
+      "speaker": "Speaker E",
+      "total_duration_ms": 12000,
+      "segments_to_concatenate": [
+        [
+          124400,
+          128130
+        ],
+        [
+          128280,
+          132420
+        ],
+        [
+          132460,
+          136070
+        ],
+        [
+          136390,
+          136910
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 28,
+          "original": "你讲到我穿衣，他根本不是在一个起跑线上。",
+          "translation": "You mentioned my clothing, he's not even on the same starting line.",
+          "original_time": [
+            124600,
+            127930
+          ]
+        },
+        {
+          "sequence": 29,
+          "original": "他不能把他跟他们那些人是一个级别的。",
+          "translation": "He can't be put on the same level as those people.",
+          "original_time": [
+            128480,
+            132220
+          ]
+        },
+        {
+          "sequence": 30,
+          "original": "一个是刚刚从学校出来，完全一无所知的情况。",
+          "translation": "One just came out of school, completely ignorant.",
+          "original_time": [
+            132660,
+            135870
+          ]
+        },
+        {
+          "sequence": 31,
+          "original": "他是经历过市场的锻炼，他也摸打滚打了那么多年了。",
+          "translation": "He has been tempered by the market, and he has been working hard for so many years.",
+          "original_time": [
+            136590,
+            141110
+          ]
+        }
+      ]
+    },
+    "Clip_16": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 1530,
+      "segments_to_concatenate": [
+        [
+          141430,
+          142960
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 32,
+          "original": "是，对，所以完全是",
+          "translation": "Yes, right, so it's completely",
+          "original_time": [
+            141630,
+            142760
+          ]
+        }
+      ]
+    },
+    "Clip_17": {
+      "speaker": "Speaker E",
+      "total_duration_ms": 4830,
+      "segments_to_concatenate": [
+        [
+          142560,
+          147390
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 33,
+          "original": "他这个人生的认知是不在一个层面的。",
+          "translation": "His understanding of life is on a different level.",
+          "original_time": [
+            142760,
+            147190
+          ]
+        }
+      ]
+    },
+    "Clip_18": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 11880,
+      "segments_to_concatenate": [
+        [
+          147250,
+          149150
+        ],
+        [
+          149240,
+          159220
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 34,
+          "original": "一个前辈给我分享了一个故事。",
+          "translation": "A senior shared a story with me.",
+          "original_time": [
+            147450,
+            148950
+          ]
+        },
+        {
+          "sequence": 35,
+          "original": "他说自如，你们在大学里面学的所有的知识，其实在社会实践当中是严重脱节的。",
+          "translation": "He said, Ziru, all the knowledge you learn in university is actually severely disconnected from real-world practice.",
+          "original_time": [
+            149440,
+            154850
+          ]
+        },
+        {
+          "sequence": 36,
+          "original": "因为之所以能够进入教科书都是过去的经验。",
+          "translation": "Because the reason it can enter textbooks is all past experience.",
+          "original_time": [
+            155140,
+            157710
+          ]
+        },
+        {
+          "sequence": 37,
+          "original": "但是我们现在今天的知识发散才是最有价值的。",
+          "translation": "But the knowledge we are disseminating today is the most valuable.",
+          "original_time": [
+            158100,
+            159920
+          ]
+        }
+      ]
+    },
+    "Clip_19": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 1260,
+      "segments_to_concatenate": [
+        [
+          172460,
+          173720
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 42,
+          "original": "这正是。",
+          "translation": "That's exactly it.",
+          "original_time": [
+            172660,
+            173520
+          ]
+        }
+      ]
+    },
+    "Clip_20": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 4230,
+      "segments_to_concatenate": [
+        [
+          173420,
+          175850
+        ],
+        [
+          176450,
+          178250
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 43,
+          "original": "这还不算完，还有人给你发钱哦。",
+          "translation": "That's not all, someone even pays you.",
+          "original_time": [
+            173620,
+            175650
+          ]
+        },
+        {
+          "sequence": 44,
+          "original": "你觉得这些事情哪有什么好的事？",
+          "translation": "What's good about these things, you ask?",
+          "original_time": [
+            176650,
+            178050
+          ]
+        }
+      ]
+    },
+    "Clip_21": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 7990,
+      "segments_to_concatenate": [
+        [
+          178440,
+          182380
+        ],
+        [
+          182470,
+          186520
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 45,
+          "original": "你知道我们所有人都很羡慕，你跟着董姐在一起。",
+          "translation": "You know, all of us envy you, being with Sister Dong.",
+          "original_time": [
+            178640,
+            182180
+          ]
+        },
+        {
+          "sequence": 46,
+          "original": "她吃过的亏，上过的当以及她建立过的东西，她都把经验告诉你了。",
+          "translation": "The setbacks she's faced, the traps she's fallen into, and the things she's built, she's shared all that experience with you.",
+          "original_time": [
+            182670,
+            186320
+          ]
+        }
+      ]
+    },
+    "Clip_22": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 11590,
+      "segments_to_concatenate": [
+        [
+          186290,
+          197880
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 47,
+          "original": "是的。",
+          "translation": "Yes.",
+          "original_time": [
+            186490,
+            186720
+          ]
+        },
+        {
+          "sequence": 48,
+          "original": "所以当时我就总结一句话，我就说刚毕业的年轻人一定要学会心态归零。",
+          "translation": "So at that time, I summarized it in one sentence. I said that young people who have just graduated must learn to reset their mindset.",
+          "original_time": [
+            186910,
+            191640
+          ]
+        },
+        {
+          "sequence": 49,
+          "original": "然后第二个就是我当时就曾经幻想过有一天，如果我的职业生涯当中能有那么一段经历可以跟在一个顶级的企业家身边从事工作，展开工作，我哪怕每天什么都不干，我就看他怎么开会，我听他每天讲什么，做什么，我就觉得这是件很幸福的事，我真想过。",
+          "translation": "And the second thing is, I once imagined that one day, if I could have an experience in my career working alongside a top entrepreneur, starting work, even if I did nothing every day, I would just watch how he held meetings, listen to what he said and did every day. I would feel that would be a very happy thing. I really thought about it.",
+          "original_time": [
+            191840,
+            203860
+          ]
+        }
+      ]
+    },
+    "Clip_23": {
+      "speaker": "Speaker E",
+      "total_duration_ms": 11710,
+      "segments_to_concatenate": [
+        [
+          211320,
+          212570
+        ],
+        [
+          212630,
+          223090
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 51,
+          "original": "他知道。",
+          "translation": "He knows.",
+          "original_time": [
+            211520,
+            212370
+          ]
+        },
+        {
+          "sequence": 52,
+          "original": "一个人成功靠你在外面，你必须要有一个整体的力量，你才能够有实现他成功。",
+          "translation": "For a person to succeed through you outside, you must have a collective strength to achieve their success.",
+          "original_time": [
+            212830,
+            220970
+          ]
+        },
+        {
+          "sequence": 53,
+          "original": "所以要讲团队精神。",
+          "translation": "So it's about teamwork.",
+          "original_time": [
+            221240,
+            222780
+          ]
+        },
+        {
+          "sequence": 54,
+          "original": "我跟他认识年数很久，但是我后来就没理。",
+          "translation": "I've known him for many years, but I just didn't pay attention to him later.",
+          "original_time": [
+            223020,
+            226430
+          ]
+        }
+      ]
+    },
+    "Clip_24": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 4260,
+      "segments_to_concatenate": [
+        [
+          231470,
+          235730
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 57,
+          "original": "很偶然的机会。",
+          "translation": "A very coincidental opportunity.",
+          "original_time": [
+            231670,
+            232820
+          ]
+        },
+        {
+          "sequence": 58,
+          "original": "经常的直播。",
+          "translation": "Frequent live broadcasts.",
+          "original_time": [
+            232970,
+            234590
+          ]
+        },
+        {
+          "sequence": 59,
+          "original": "搞直播吗？",
+          "translation": "Doing live streams?",
+          "original_time": [
+            234660,
+            235530
+          ]
+        }
+      ]
+    },
+    "Clip_25": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 1820,
+      "segments_to_concatenate": [
+        [
+          235450,
+          237270
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 60,
+          "original": "就这样也有见识。",
+          "translation": "This way, you also gain knowledge.",
+          "original_time": [
+            235650,
+            237070
+          ]
+        }
+      ]
+    },
+    "Clip_26": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 5980,
+      "segments_to_concatenate": [
+        [
+          237130,
+          243110
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 61,
+          "original": "觉得这个小孩子变化好大。",
+          "translation": "I think this child has changed a lot.",
+          "original_time": [
+            237330,
+            240110
+          ]
+        },
+        {
+          "sequence": 62,
+          "original": "变化也很大。",
+          "translation": "A significant change.",
+          "original_time": [
+            240360,
+            242910
+          ]
+        }
+      ]
+    },
+    "Clip_27": {
+      "speaker": "Speaker E",
+      "total_duration_ms": 10930,
+      "segments_to_concatenate": [
+        [
+          242810,
+          253740
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 63,
+          "original": "其实你就在那可不能干。",
+          "translation": "Actually, you can't just stand there and do nothing.",
+          "original_time": [
+            243010,
+            244930
+          ]
+        },
+        {
+          "sequence": 64,
+          "original": "我觉得董能让他能干不能干。",
+          "translation": "I think Dong can let him do it or not.",
+          "original_time": [
+            245060,
+            246720
+          ]
+        },
+        {
+          "sequence": 65,
+          "original": "我只是给他开了一个门，他俩有性能进了这个门以后，完全看到自己。",
+          "translation": "I just opened a door for him; after they entered this door with performance, they fully saw themselves.",
+          "original_time": [
+            246720,
+            252210
+          ]
+        },
+        {
+          "sequence": 66,
+          "original": "所以我还是因为我比较喜欢他这个他们敬业精神在他们这一代里面已经很少。",
+          "translation": "So I still like him because their dedication is rare among their generation.",
+          "original_time": [
+            252210,
+            259830
+          ]
+        }
+      ]
+    },
+    "Clip_28": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 4170,
+      "segments_to_concatenate": [
+        [
+          267050,
+          271220
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 69,
+          "original": "哎，我很好奇啊，作为公司的高管，你一个月的收入情况怎么样？",
+          "translation": "Hey, I'm very curious. As a senior executive of the company, what's your monthly income like?",
+          "original_time": [
+            267250,
+            271020
+          ]
+        }
+      ]
+    },
+    "Clip_29": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 6570,
+      "segments_to_concatenate": [
+        [
+          271230,
+          273070
+        ],
+        [
+          273200,
+          275540
+        ],
+        [
+          277030,
+          278290
+        ],
+        [
+          278570,
+          279700
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 70,
+          "original": "其实我收实话。",
+          "translation": "Honestly.",
+          "original_time": [
+            271430,
+            272870
+          ]
+        },
+        {
+          "sequence": 71,
+          "original": "我没有看过格力公司的工资票。",
+          "translation": "I haven't seen Gree's payroll.",
+          "original_time": [
+            273400,
+            275340
+          ]
+        },
+        {
+          "sequence": 72,
+          "original": "我真没看过。",
+          "translation": "I really haven't seen it.",
+          "original_time": [
+            277230,
+            278090
+          ]
+        },
+        {
+          "sequence": 73,
+          "original": "我不知道。",
+          "translation": "I don't know.",
+          "original_time": [
+            278770,
+            279500
+          ]
+        }
+      ]
+    },
+    "Clip_30": {
+      "speaker": "Speaker D",
+      "total_duration_ms": 4030,
+      "segments_to_concatenate": [
+        [
+          279890,
+          283920
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 74,
+          "original": "那就是说吃饭不花钱，然后住宿舍，还有什么就是",
+          "translation": "So that means you don't pay for meals, you stay in dorms, and what else, just",
+          "original_time": [
+            280090,
+            283720
+          ]
+        }
+      ]
+    },
+    "Clip_31": {
+      "speaker": "Speaker C",
+      "total_duration_ms": 11910,
+      "segments_to_concatenate": [
+        [
+          283720,
+          292220
+        ],
+        [
+          292430,
+          295840
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 75,
+          "original": "我没看过公司，因为我来格力电器的时候，我就我就说董总，能不能给我意见离您比较近的办公室，随时跟你汇报，然后其他的，",
+          "translation": "I haven't seen the company because when I came to Gree Electric Appliances, I said, Mr. Dong, could you give me an office closer to you so I can report to you at any time? As for other things,",
+          "original_time": [
+            283920,
+            292020
+          ]
+        },
+        {
+          "sequence": 76,
+          "original": "我就不知道。",
+          "translation": "I don't know.",
+          "original_time": [
+            292630,
+            293550
+          ]
+        },
+        {
+          "sequence": 77,
+          "original": "我最开始刚来公司第一个月跟团队开会的时候，我就跟团队讲。",
+          "translation": "When I first came to the company and had my first team meeting, I told the team.",
+          "original_time": [
+            293860,
+            297220
+          ]
+        }
+      ]
+    },
+    "Clip_32": {
+      "speaker": "N/A",
+      "total_duration_ms": 1030,
+      "segments_to_concatenate": [
+        [
+          357040,
+          358070
+        ]
+      ],
+      "padding_ms": 200,
+      "sentences": [
+        {
+          "sequence": 86,
+          "original": "Electronic music plays",
+          "translation": "Electronic music plays",
+          "original_time": [
+            357240,
+            357870
+          ]
+        }
+      ]
+    }
+  },
+  "sentence_to_clip_map": {
+    "1": "Clip_1",
+    "2": "Clip_2",
+    "3": "Clip_3",
+    "4": "Clip_3",
+    "6": "Clip_4",
+    "7": "Clip_5",
+    "8": "Clip_6",
+    "9": "Clip_6",
+    "10": "Clip_7",
+    "11": "Clip_8",
+    "12": "Clip_9",
+    "13": "Clip_10",
+    "14": "Clip_10",
+    "15": "Clip_10",
+    "16": "Clip_10",
+    "17": "Clip_11",
+    "18": "Clip_11",
+    "19": "Clip_12",
+    "20": "Clip_13",
+    "21": "Clip_13",
+    "22": "Clip_13",
+    "23": "Clip_13",
+    "24": "Clip_13",
+    "25": "Clip_13",
+    "26": "Clip_13",
+    "27": "Clip_14",
+    "28": "Clip_15",
+    "29": "Clip_15",
+    "30": "Clip_15",
+    "31": "Clip_15",
+    "32": "Clip_16",
+    "33": "Clip_17",
+    "34": "Clip_18",
+    "35": "Clip_18",
+    "36": "Clip_18",
+    "37": "Clip_18",
+    "38": "Clip_18",
+    "39": "Clip_18",
+    "40": "Clip_18",
+    "41": "Clip_18",
+    "42": "Clip_19",
+    "43": "Clip_20",
+    "44": "Clip_20",
+    "45": "Clip_21",
+    "46": "Clip_21",
+    "47": "Clip_22",
+    "48": "Clip_22",
+    "49": "Clip_22",
+    "51": "Clip_23",
+    "52": "Clip_23",
+    "53": "Clip_23",
+    "54": "Clip_23",
+    "55": "Clip_23",
+    "56": "Clip_23",
+    "57": "Clip_24",
+    "58": "Clip_24",
+    "59": "Clip_24",
+    "60": "Clip_25",
+    "61": "Clip_26",
+    "62": "Clip_26",
+    "63": "Clip_27",
+    "64": "Clip_27",
+    "65": "Clip_27",
+    "66": "Clip_27",
+    "67": "Clip_27",
+    "68": "Clip_27",
+    "69": "Clip_28",
+    "70": "Clip_29",
+    "71": "Clip_29",
+    "72": "Clip_29",
+    "73": "Clip_29",
+    "74": "Clip_30",
+    "75": "Clip_31",
+    "76": "Clip_31",
+    "77": "Clip_31",
+    "78": "Clip_31",
+    "79": "Clip_31",
+    "80": "Clip_31",
+    "81": "Clip_31",
+    "82": "Clip_31",
+    "83": "Clip_31",
+    "84": "Clip_31",
+    "85": "Clip_31",
+    "86": "Clip_32"
+  },
+  "clip_files": {
+    "Clip_1": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_1_Speaker_A.wav",
+    "Clip_2": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_2_Speaker_B.wav",
+    "Clip_3": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_3_Speaker_C.wav",
+    "Clip_4": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_4_Speaker_D.wav",
+    "Clip_5": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_5_Speaker_C.wav",
+    "Clip_6": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_6_Speaker_D.wav",
+    "Clip_7": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_7_Speaker_C.wav",
+    "Clip_8": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_8_Speaker_D.wav",
+    "Clip_9": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_9_Speaker_C.wav",
+    "Clip_10": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_10_Speaker_D.wav",
+    "Clip_11": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_11_Speaker_C.wav",
+    "Clip_12": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_12_Speaker_E.wav",
+    "Clip_13": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_13_Speaker_C.wav",
+    "Clip_14": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_14_Speaker_D.wav",
+    "Clip_15": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_15_Speaker_E.wav",
+    "Clip_16": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_16_Speaker_D.wav",
+    "Clip_17": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_17_Speaker_E.wav",
+    "Clip_18": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_18_Speaker_C.wav",
+    "Clip_19": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_19_Speaker_D.wav",
+    "Clip_20": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_20_Speaker_C.wav",
+    "Clip_21": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_21_Speaker_D.wav",
+    "Clip_22": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_22_Speaker_C.wav",
+    "Clip_23": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_23_Speaker_E.wav",
+    "Clip_24": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_24_Speaker_D.wav",
+    "Clip_25": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_25_Speaker_C.wav",
+    "Clip_26": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_26_Speaker_D.wav",
+    "Clip_27": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_27_Speaker_E.wav",
+    "Clip_28": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_28_Speaker_D.wav",
+    "Clip_29": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_29_Speaker_C.wav",
+    "Clip_30": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_30_Speaker_D.wav",
+    "Clip_31": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_31_Speaker_C.wav",
+    "Clip_32": "audio_clips_fixed_53ee90f3-a2d3-46df-8a9a-0bf98b8c5879/Clip_32_N_A.wav"
+  }
+}

@@ -20,6 +20,9 @@ fi
 # 启动服务
 echo "启动 TTS 引擎服务..."
 cd "$(dirname "$0")"
-python3 launcher.py
 
-echo "=== TTS 引擎服务启动完成 ==="
+# 使用新的app.py入口点启动服务
+echo "正在启动 WaveShift TTS Engine v2.0 (无Ray架构)..."
+python3 app.py
+
+echo "=== TTS 引擎服务已关闭 ==="

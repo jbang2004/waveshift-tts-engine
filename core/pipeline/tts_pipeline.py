@@ -12,15 +12,15 @@ logger = logging.getLogger(__name__)
 class FetchDataStep(Step):
     """获取任务数据步骤"""
     
-    def __init__(self, data_fetcher_handle):
+    def __init__(self, data_fetcher):
         super().__init__("获取任务数据")
-        self.data_fetcher = data_fetcher_handle
+        self.data_fetcher = data_fetcher
     
     async def execute(self, context: Dict[str, Any]) -> Tuple[bool, str]:
         task_id = context['task_id']
         
         try:
-            task_data = await self.data_fetcher.fetch_task_data.remote(task_id)
+            task_data = await self.data_fetcher.fetch_task_data(task_id)
             
             if task_data.get("status") != "success":
                 return False, f"获取任务数据失败: {task_data.get('message', 'Unknown error')}"
@@ -52,9 +52,9 @@ class FetchDataStep(Step):
 class SegmentAudioStep(Step):
     """音频切分步骤"""
     
-    def __init__(self, audio_segmenter_handle):
+    def __init__(self, audio_segmenter):
         super().__init__("音频切分")
-        self.audio_segmenter = audio_segmenter_handle
+        self.audio_segmenter = audio_segmenter
     
     async def execute(self, context: Dict[str, Any]) -> Tuple[bool, str]:
         task_id = context['task_id']
@@ -65,7 +65,7 @@ class SegmentAudioStep(Step):
             return False, "缺少必需的句子数据或音频文件路径"
         
         try:
-            segmented_sentences = await self.audio_segmenter.segment_audio_for_sentences.remote(
+            segmented_sentences = await self.audio_segmenter.segment_audio_for_sentences(
                 task_id, audio_file_path, sentences
             )
             
@@ -83,9 +83,9 @@ class SegmentAudioStep(Step):
 class InitHLSStep(Step):
     """初始化HLS管理器步骤"""
     
-    def __init__(self, hls_manager_handle):
+    def __init__(self, hls_manager):
         super().__init__("初始化HLS管理器")
-        self.hls_manager = hls_manager_handle
+        self.hls_manager = hls_manager
     
     async def execute(self, context: Dict[str, Any]) -> Tuple[bool, str]:
         task_id = context['task_id']
@@ -96,7 +96,7 @@ class InitHLSStep(Step):
             context['path_manager'] = path_manager
             
             # 初始化HLS管理器
-            response = await self.hls_manager.create_manager.remote(task_id, path_manager)
+            response = await self.hls_manager.create_manager(task_id, path_manager)
             
             if not (isinstance(response, dict) and response.get("status") == "success"):
                 return False, f"HLS管理器初始化失败: {response}"
@@ -112,7 +112,7 @@ class TTSStreamProcessingStep(Step):
     
     def __init__(self, services: Dict[str, Any], config):
         super().__init__("TTS流处理")
-        self.tts_handle = services['tts']
+        self.tts = services['tts']
         self.duration_aligner = services['duration_aligner']
         self.timestamp_adjuster = services['timestamp_adjuster']
         self.media_mixer = services['media_mixer']
@@ -152,7 +152,7 @@ class TTSStreamProcessingStep(Step):
         
         try:
             # TTS批处理流
-            async for tts_batch in self.tts_handle.batch_generate.options(stream=True).remote(
+            async for tts_batch in self.tts.batch_generate(
                 sentences, batch_size=self.config.TTS_BATCH_SIZE
             ):
                 if not tts_batch:
@@ -178,7 +178,7 @@ class TTSStreamProcessingStep(Step):
             
             # HLS最终化
             self.logger.info(f"[{task_id}] 开始HLS最终化处理")
-            result = await self.hls_manager.finalize_merge.remote(
+            result = await self.hls_manager.finalize_merge(
                 task_id=task_id,
                 all_processed_segment_paths=processed_segment_paths,
                 path_manager=path_manager
@@ -202,13 +202,13 @@ class TTSStreamProcessingStep(Step):
         """处理单个TTS批次"""
         try:
             # 时长对齐
-            aligned_batch = await self.duration_aligner.remote(batch, max_speed=1.2)
+            aligned_batch = await self.duration_aligner(batch, max_speed=1.2)
             if not aligned_batch:
                 self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时长对齐失败")
                 return None
                 
             # 时间戳调整
-            adjusted_batch = await self.timestamp_adjuster.remote(
+            adjusted_batch = await self.timestamp_adjuster(
                 aligned_batch, self.config.TARGET_SR, current_time_ms
             )
             if not adjusted_batch:
@@ -220,7 +220,7 @@ class TTSStreamProcessingStep(Step):
             new_time_ms = last_sentence.adjusted_start + last_sentence.adjusted_duration
             
             # 媒体混合
-            segment_path = await self.media_mixer.mix_media.remote(
+            segment_path = await self.media_mixer.mix_media(
                 sentences_batch=adjusted_batch,
                 path_manager=path_manager,
                 batch_counter=batch_counter,
@@ -233,7 +233,7 @@ class TTSStreamProcessingStep(Step):
                 return None
                 
             # 添加HLS段
-            hls_result = await self.hls_manager.add_segment.remote(
+            hls_result = await self.hls_manager.add_segment(
                 task_id, segment_path, batch_counter + 1
             )
             
