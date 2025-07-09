@@ -35,8 +35,9 @@ def main():
         # 启动FastAPI服务器
         logger.info(f"正在启动HTTP服务器 - {config.SERVER_HOST}:{config.SERVER_PORT}")
         
-        # 导入API模块（这将触发服务初始化）
-        from api import app
+        # 导入API模块并设置服务管理器
+        from api import app, set_service_manager
+        set_service_manager(service_manager)
         
         # 启动服务器
         uvicorn.run(

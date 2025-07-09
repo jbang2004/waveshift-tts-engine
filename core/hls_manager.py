@@ -19,15 +19,18 @@ logger = logging.getLogger(__name__)
 
 class HLSManager:
     """HLS流媒体管理器 - 支持多任务管理"""
-    def __init__(self):
+    def __init__(self, d1_client: D1Client = None):
         self.config = Config()
         
-        # 初始化D1客户端
-        self.d1_client = D1Client(
-            account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
-            api_token=self.config.CLOUDFLARE_API_TOKEN,
-            database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
-        )
+        # 使用依赖注入的客户端，如果没有则创建新的（向后兼容）
+        if d1_client is not None:
+            self.d1_client = d1_client
+        else:
+            self.d1_client = D1Client(
+                account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
+                api_token=self.config.CLOUDFLARE_API_TOKEN,
+                database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
+            )
         
         # 初始化R2 HLS存储管理器
         self.hls_storage_manager = R2HLSStorageManager(config=self.config)
@@ -194,11 +197,11 @@ class HLSManager:
                 storage_url = upload_result["public_url"]
                 try:
                     asyncio.create_task(self.d1_client.update_task_status(
-                        task_id, 'processing', hls_playlist_url=storage_url
+                        task_id, 'processing'
                     ))
-                    self.logger.info(f"[{task_id}] HLS播放列表R2 URL已更新到数据库: {storage_url}")
+                    self.logger.info(f"[{task_id}] 任务状态已更新，HLS播放列表已上传到R2: {storage_url}")
                 except Exception as update_e:
-                    self.logger.error(f"[{task_id}] 更新HLS播放列表R2 URL到数据库失败: {update_e}")
+                    self.logger.error(f"[{task_id}] 更新任务状态失败: {update_e}")
             else:
                 self.logger.error(f"[{task_id}] 播放列表上传到R2失败: {upload_result.get('message', 'Unknown error')}")
                 
@@ -410,11 +413,6 @@ class HLSManager:
         if not all_processed_segment_paths:
             msg = "HLSManager: 没有处理成功的视频片段可以合并。"
             self.logger.error(f"[{task_id}] {msg}")
-            if self.supabase_client:
-                try:
-                    asyncio.create_task(self.supabase_client.update_task(task_id, {'status': 'error', 'error_message': msg}))
-                except Exception as db_update_e:
-                    self.logger.error(f"[{task_id}] HLSManager: 更新数据库状态(无片段)失败: {db_update_e}")
             return {"status": "error", "message": msg}
 
         try:
@@ -445,28 +443,12 @@ class HLSManager:
             if not final_video_path_obj or not final_video_path_obj.exists():
                 msg = "HLSManager: 视频合并失败，最终文件未生成。"
                 self.logger.error(f"[{task_id}] {msg}")
-                if self.supabase_client:
-                    try:
-                        asyncio.create_task(self.supabase_client.update_task(task_id, {'status': 'error', 'error_message': msg}))
-                    except Exception as db_update_e:
-                         self.logger.error(f"[{task_id}] HLSManager: 更新数据库状态(合并失败)失败: {db_update_e}")
                 return {"status": "error", "message": msg}
 
             # 完成流程并更新状态
             final_video_path_str = str(final_video_path_obj)
             merge_duration = time.time() - merge_start_time
             
-            if self.supabase_client:
-                try:
-                    asyncio.create_task(self.supabase_client.update_task(task_id, {
-                        'status': 'completed',
-                        'download_video_path': final_video_path_str,
-                    }))
-                    self.logger.info(f"[{task_id}] HLSManager: 任务状态成功，下载路径已异步更新到数据库。")
-                except Exception as db_update_e:
-                    self.logger.error(f"[{task_id}] HLSManager: 更新数据库状态(成功)失败: {db_update_e}")
-                    # 即使数据库更新失败，合并本身是成功的，所以仍然返回成功
-                    return {"status": "success", "message": "视频处理成功，但数据库更新失败", "output_path": final_video_path_str}
 
             # 3. 清理本地HLS文件（如果启用Storage且配置了清理）
             if self.config.ENABLE_HLS_STORAGE and self.config.CLEANUP_LOCAL_HLS_FILES:
@@ -495,9 +477,4 @@ class HLSManager:
         except Exception as e:
             msg = f"HLSManager: 视频合并过程中出错: {e}"
             self.logger.exception(f"[{task_id}] {msg}") # Log with stack trace
-            if self.supabase_client:
-                try:
-                    asyncio.create_task(self.supabase_client.update_task(task_id, {'status': 'error', 'error_message': msg}))
-                except Exception as db_update_e:
-                    self.logger.error(f"[{task_id}] HLSManager: 更新数据库状态(合并异常)失败: {db_update_e}")
             return {"status": "error", "message": msg} 

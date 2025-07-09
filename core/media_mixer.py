@@ -5,6 +5,9 @@ import numpy as np
 import logging
 from typing import List, Optional, Tuple
 import asyncio
+import gc
+import psutil
+import os
 
 # Ray tasks imported directly
 from utils.audio_utils import apply_fade_effect, mix_with_background, normalize_audio
@@ -12,6 +15,8 @@ from utils.video_utils import add_video_segment
 from config import Config
 from core.sentence_tools import Sentence
 from utils.path_manager import PathManager
+from utils.async_utils import BackgroundTaskManager
+from utils.error_handling import log_and_continue, ServiceError
 
 # 使用全局日志配置，直接获取 logger
 logger = logging.getLogger(__name__)
@@ -25,9 +30,82 @@ class MediaMixer:
         self.sample_rate = self.config.TARGET_SR
         self.max_val = 0.8  # 音频最大值
         self.logger = logging.getLogger(__name__)
-        self.logger.info(f"MediaMixerActor初始化完成，采样率={self.sample_rate}")
-        self.full_audio_buffer = np.array([], dtype=np.float32)  # 保留音频缓冲区，用于平滑过渡
+        
+        # 音频缓冲区设置
+        self.full_audio_buffer = np.array([], dtype=np.float32)
+        
+        # 内存管理配置
+        self.max_buffer_duration = getattr(self.config, 'MAX_BUFFER_DURATION', 10.0)  # 最大缓冲时长（秒）
+        self.memory_threshold_mb = getattr(self.config, 'MEMORY_THRESHOLD_MB', 500)  # 内存阈值（MB）
+        self.cleanup_interval = getattr(self.config, 'CLEANUP_INTERVAL', 5)  # 清理间隔（批次）
+        self.batch_counter = 0  # 批次计数器
+        
+        # 任务管理器
+        self.task_manager = BackgroundTaskManager()
+        
+        # 内存监控
+        self.process = psutil.Process(os.getpid())
+        
+        self.logger.info(f"MediaMixer初始化完成，采样率={self.sample_rate}")
+        self.logger.info(f"内存管理配置 - 最大缓冲时长: {self.max_buffer_duration}s, 内存阈值: {self.memory_threshold_mb}MB")
+        
     
+    def _get_memory_usage(self) -> float:
+        """获取当前内存使用量（MB）"""
+        try:
+            memory_info = self.process.memory_info()
+            return memory_info.rss / (1024 * 1024)  # 转换为MB
+        except Exception:
+            return 0.0
+    
+    def _should_cleanup_buffer(self) -> bool:
+        """检查是否需要清理缓冲区"""
+        # 检查缓冲区大小
+        buffer_duration = len(self.full_audio_buffer) / self.sample_rate
+        if buffer_duration > self.max_buffer_duration:
+            return True
+        
+        # 检查内存使用量
+        memory_usage = self._get_memory_usage()
+        if memory_usage > self.memory_threshold_mb:
+            return True
+        
+        # 检查批次间隔
+        if self.batch_counter % self.cleanup_interval == 0:
+            return True
+        
+        return False
+    
+    def _cleanup_buffer(self):
+        """清理音频缓冲区"""
+        if len(self.full_audio_buffer) == 0:
+            return
+        
+        # 保留最后几秒的音频用于平滑过渡
+        preserve_duration = min(5.0, self.max_buffer_duration * 0.5)
+        preserve_samples = int(preserve_duration * self.sample_rate)
+        
+        if len(self.full_audio_buffer) > preserve_samples:
+            old_size = len(self.full_audio_buffer)
+            self.full_audio_buffer = self.full_audio_buffer[-preserve_samples:]
+            
+            # 手动触发垃圾回收
+            gc.collect()
+            
+            memory_usage = self._get_memory_usage()
+            self.logger.info(
+                f"缓冲区清理完成 - 保留样本: {preserve_samples}, "
+                f"释放样本: {old_size - preserve_samples}, "
+                f"当前内存: {memory_usage:.2f}MB"
+            )
+    
+    def _create_status_update_task(self, task_id: str, status: str):
+        """创建状态更新后台任务"""
+        def error_handler(e: Exception):
+            self.logger.error(f"状态更新失败 [任务ID: {task_id}] [状态: {status}]: {e}")
+        
+    
+    @log_and_continue(default_return=None, log_level="ERROR")
     async def mix_media(
         self,
         sentences_batch: List[Sentence],
@@ -36,96 +114,102 @@ class MediaMixer:
         task_id: str
     ) -> Optional[str]:
         """处理一批句子并返回处理后的视频片段路径"""
+        # 更新批次计数器
+        self.batch_counter = batch_counter
         
-        try:
-            # If this is the first batch processed by the mixer for this task, update status to 'mixing'
-            if batch_counter == 0 and self.supabase_client:
-                try:
-                    self.logger.info(f"[{task_id}] MediaMixer: First batch (batch_counter=0), updating status to 'mixing'.")
-                    asyncio.create_task(self.supabase_client.update_task(task_id, {'status': 'mixing'}))
-                except Exception as e_update_status:
-                    self.logger.error(f"[{task_id}] MediaMixer: Failed to update status to 'mixing': {e_update_status}")
+        # 记录内存使用情况
+        memory_usage = self._get_memory_usage()
+        buffer_duration = len(self.full_audio_buffer) / self.sample_rate
+        
+        self.logger.info(
+            f"[{task_id}] 开始处理批次 {batch_counter} - "
+            f"句子数: {len(sentences_batch)}, "
+            f"内存使用: {memory_usage:.2f}MB, "
+            f"缓冲区时长: {buffer_duration:.2f}s"
+        )
+        
+        # 第一批次时更新状态
+        if batch_counter == 0:
+            self.logger.info(f"[{task_id}] 第一批次，更新状态为 'mixing'")
+            self._create_status_update_task(task_id, 'mixing')
 
-            if not sentences_batch:
-                logger.warning(f"[{task_id}] mix_media: 收到空的句子列表")
-                return None
-
-            # 获取 media_files 和 target_language
-            media_files = {}
-            target_language = None # 初始化
-            generate_subtitle = False # 初始化
-            if self.supabase_client:
-                task_data = await self.supabase_client.get_task(task_id)
-                if task_data:
-                    media_files['silent_video_path'] = task_data.get('silent_video_path')
-                    media_files['vocals_audio_path'] = task_data.get('vocals_audio_path')
-                    media_files['background_audio_path'] = task_data.get('background_audio_path')
-                    target_language = task_data.get('target_language') # <<< 获取 target_language
-                    generate_subtitle = task_data.get('generate_subtitle', False) # <<< 获取 generate_subtitle
-                    # 获取视频尺寸
-                    video_width = task_data.get('video_width', -1) # Default to -1 if not found
-                    video_height = task_data.get('video_height', -1) # Default to -1 if not found
-                    media_files['video_width'] = video_width
-                    media_files['video_height'] = video_height
-                    
-                    if video_width == -1 or video_height == -1:
-                        self.logger.warning(f"[{task_id}] MediaMixer: video_width or video_height not found or invalid in task_data. Subtitle scaling might be affected.")
-                else:
-                    self.logger.error(f"[{task_id}] MediaMixer: 无法从数据库获取任务信息")
-                    return None
-            else:
-                self.logger.error(f"[{task_id}] MediaMixer: Supabase客户端未初始化")
-                return None
-
-            if not media_files.get('silent_video_path') or not media_files.get('vocals_audio_path'):
-                self.logger.error(f"[{task_id}] MediaMixer: 数据库中缺少 silent_video_path 或 vocals_audio_path")
-                return None
-            
-            # 只有在生成字幕时才需要target_language
-            if generate_subtitle and not target_language:
-                self.logger.error(f"[{task_id}] MediaMixer: 生成字幕时缺少 target_language")
-                return None
-            
-            logger.info(f"[{task_id}] 开始处理批次 {batch_counter}, 句子数 {len(sentences_batch)}, 目标语言: {target_language}")
-            
-            output_path = path_manager.temp.segments_dir / f"segment_{batch_counter}.mp4"
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            max_val = 1.0
-            
-            success, updated_buffer = await create_mixed_segment(
-                sentences=sentences_batch,
-                media_files=media_files,
-                output_path=str(output_path),
-                generate_subtitle=generate_subtitle,
-                config=self.config,
-                sample_rate=self.sample_rate,
-                max_val=max_val,
-                full_audio_buffer=self.full_audio_buffer,
-                task_id=task_id,
-                target_language=target_language
-            )
-            
-            if not success:
-                logger.error(f"[{task_id}] 批次 {batch_counter} 处理失败")
-                return None
-            
-            if len(updated_buffer) > self.sample_rate * 5:
-                preserve_samples = min(len(updated_buffer), int(self.sample_rate * 5))
-                self.full_audio_buffer = updated_buffer[-preserve_samples:]
-            else:
-                self.full_audio_buffer = updated_buffer
-                
-            logger.info(f"[{task_id}] 更新音频缓冲区, 批次 {batch_counter}, 句子数 {len(sentences_batch)}")
-            
-            return str(output_path)
-                
-        except Exception as e:
-            logger.exception(f"[{task_id}] mix_media 执行出错: {str(e)}")
+        if not sentences_batch:
+            logger.warning(f"[{task_id}] mix_media: 收到空的句子列表")
             return None
-        finally:
-            if 'updated_buffer' in locals() and 'success' in locals() and success and updated_buffer is not self.full_audio_buffer:
-                del updated_buffer
+
+        # 使用传递的path_manager获取媒体文件路径
+        media_files = {}
+        target_language = 'zh'  # 默认中文
+        generate_subtitle = False  # 默认不生成字幕
+        
+        # 从path_manager获取媒体文件路径
+        media_files['silent_video_path'] = path_manager.video_file_path
+        media_files['vocals_audio_path'] = path_manager.audio_file_path
+        media_files['background_audio_path'] = None  # 暂时不使用背景音频
+        media_files['video_width'] = 1920  # 默认视频尺寸
+        media_files['video_height'] = 1080
+        
+        if not media_files.get('silent_video_path') or not media_files.get('vocals_audio_path'):
+            self.logger.error(f"[{task_id}] MediaMixer: 缺少视频或音频文件路径")
+            return None
+        
+        output_path = path_manager.temp.segments_dir / f"segment_{batch_counter}.mp4"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        max_val = 1.0
+        
+        success, updated_buffer = await create_mixed_segment(
+            sentences=sentences_batch,
+            media_files=media_files,
+            output_path=str(output_path),
+            generate_subtitle=generate_subtitle,
+            config=self.config,
+            sample_rate=self.sample_rate,
+            max_val=max_val,
+            full_audio_buffer=self.full_audio_buffer,
+            task_id=task_id,
+            target_language=target_language
+        )
+        
+        if not success:
+            logger.error(f"[{task_id}] 批次 {batch_counter} 处理失败")
+            return None
+        
+        # 更新缓冲区
+        self.full_audio_buffer = updated_buffer
+        
+        # 检查是否需要清理缓冲区
+        if self._should_cleanup_buffer():
+            self._cleanup_buffer()
+            
+        logger.info(f"[{task_id}] 批次 {batch_counter} 处理完成")
+        
+        # 清理临时变量
+        if 'updated_buffer' in locals() and updated_buffer is not self.full_audio_buffer:
+            del updated_buffer
+        
+        # 定期强制垃圾回收
+        if batch_counter % self.cleanup_interval == 0:
+            gc.collect()
+            
+        return str(output_path)
+    
+    async def cleanup(self):
+        """清理MediaMixer资源"""
+        try:
+            if self.task_manager:
+                await self.task_manager.close()
+                self.logger.info("MediaMixer任务管理器已关闭")
+                
+            # 清理缓冲区
+            if hasattr(self, 'full_audio_buffer'):
+                del self.full_audio_buffer
+                
+            # 强制垃圾回收
+            gc.collect()
+            
+        except Exception as e:
+            self.logger.error(f"MediaMixer清理失败: {e}")
 
 async def create_mixed_segment(
     sentences: List[Sentence],

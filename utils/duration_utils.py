@@ -171,7 +171,7 @@ def align_batch(sentences: List[Sentence]) -> List[Sentence]:
     total_diff_to_adjust = sum(s.diff for s in aligned_sentences)
     positive_diff_sum = sum(x.diff for x in aligned_sentences if x.diff > 0)
     negative_diff_sum_abs = sum(abs(x.diff) for x in aligned_sentences if x.diff < 0)
-    current_time = aligned_sentences[0].start
+    current_time = aligned_sentences[0].start_ms
 
     for s in aligned_sentences:
         s.adjusted_start = current_time

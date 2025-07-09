@@ -8,7 +8,6 @@ from typing import List, Any
 from pathlib import Path
 import time
 import warnings
-import ray
 import asyncio
 
 from utils.ffmpeg_utils import cut_video_track, cut_video_with_audio, cut_video_with_subtitles_and_audio

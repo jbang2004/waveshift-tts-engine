@@ -15,23 +15,29 @@ logger = logging.getLogger(__name__)
 class DataFetcher:
     """数据获取服务 - 从Cloudflare D1和R2获取任务数据"""
     
-    def __init__(self):
+    def __init__(self, d1_client: D1Client = None, r2_client: R2Client = None):
         self.config = get_config()
         self.logger = logging.getLogger(__name__)
         
-        # 初始化Cloudflare客户端
-        self.d1_client = D1Client(
-            account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
-            api_token=self.config.CLOUDFLARE_API_TOKEN,
-            database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
-        )
+        # 使用依赖注入的客户端，如果没有则创建新的（向后兼容）
+        if d1_client is not None:
+            self.d1_client = d1_client
+        else:
+            self.d1_client = D1Client(
+                account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
+                api_token=self.config.CLOUDFLARE_API_TOKEN,
+                database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
+            )
         
-        self.r2_client = R2Client(
-            account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
-            access_key_id=self.config.CLOUDFLARE_R2_ACCESS_KEY_ID,
-            secret_access_key=self.config.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-            bucket_name=self.config.CLOUDFLARE_R2_BUCKET_NAME
-        )
+        if r2_client is not None:
+            self.r2_client = r2_client
+        else:
+            self.r2_client = R2Client(
+                account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
+                access_key_id=self.config.CLOUDFLARE_R2_ACCESS_KEY_ID,
+                secret_access_key=self.config.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
+                bucket_name=self.config.CLOUDFLARE_R2_BUCKET_NAME
+            )
         
         self.logger.info("数据获取服务初始化完成")
     

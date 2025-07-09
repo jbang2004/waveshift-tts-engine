@@ -5,10 +5,7 @@ from .prompt import (
     SIMPLIFICATION_SYSTEM_PROMPT,
     SIMPLIFICATION_USER_PROMPT
 )
-from .deepseek_client import DeepSeekClient
-from .gemini_client import GeminiClient
-from .grok_client import GrokClient as XaiGrokClient
-from .groq_client import GroqClient as GroqSDKClient
+from .base_client import TranslationClientFactory
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -24,17 +21,17 @@ class Simplifier:
         self.config = Config()
         simplification_model = (self.config.TRANSLATION_MODEL or "deepseek").strip().lower()
         
-        if simplification_model == "deepseek":
-            self.client = DeepSeekClient(api_key=self.config.DEEPSEEK_API_KEY)
-        elif simplification_model == "gemini":
-            self.client = GeminiClient(api_key=self.config.GEMINI_API_KEY)
-        elif simplification_model == "grok":
-            self.client = XaiGrokClient(api_key=self.config.XAI_API_KEY)
-        elif simplification_model == "groq":
-            self.client = GroqSDKClient(api_key=self.config.GROQ_API_KEY)
-        else:
-            raise ValueError(f"不支持的简化模型：{simplification_model}")
-        self.logger.info(f"初始化简化Actor，使用模型: {simplification_model}")
+        # 使用工厂模式创建翻译客户端
+        try:
+            api_key = self.config.get_translation_api_key()
+            self.client = TranslationClientFactory.create_client(
+                model_type=simplification_model,
+                api_key=api_key
+            )
+            self.logger.info(f"初始化简化Actor，使用模型: {simplification_model}")
+        except Exception as e:
+            self.logger.error(f"初始化翻译客户端失败: {e}")
+            raise
 
     async def _invoke_client(self, system_prompt: str, user_prompt: str, default: Dict[str, Any]) -> Dict[str, Any]:
         """统一调用模型接口"""

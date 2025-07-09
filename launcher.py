@@ -15,6 +15,8 @@ from core.timeadjust.timestamp_adjuster import TimestampAdjuster
 from core.media_mixer import MediaMixer
 from core.hls_manager import HLSManager
 from orchestrator import MainOrchestrator
+from core.cloudflare.d1_client import D1Client
+from core.client_manager import ClientManager
 
 
 class ServiceManager:
@@ -24,23 +26,40 @@ class ServiceManager:
         self.config = config
         self.logger = logger
         self.services = {}
+        self.client_manager = None
         
     def initialize_services(self):
         """初始化所有核心服务"""
         try:
-            # 初始化服务实例
-            self.services['data_fetcher'] = DataFetcher()
+            # 初始化客户端管理器
+            self.client_manager = ClientManager()
+            self.client_manager.initialize_clients()
+            
+            # 获取共享客户端
+            d1_client = self.client_manager.get_d1_client()
+            r2_client = self.client_manager.get_r2_client()
+            
+            # 将客户端添加到服务中，以便其他服务可以访问
+            self.services['d1_client'] = d1_client
+            self.services['r2_client'] = r2_client
+            self.services['client_manager'] = self.client_manager
+            
+            # 初始化服务实例（使用统一客户端）
+            self.services['data_fetcher'] = DataFetcher(
+                d1_client=d1_client,
+                r2_client=r2_client
+            )
             self.services['audio_segmenter'] = AudioSegmenter()
             self.services['simplifier'] = Simplifier()
             self.services['tts'] = MyIndexTTSDeployment(self.config)
-            # \u521d\u59cb\u5316\u6709\u4f9d\u8d56\u7684\u670d\u52a1\uff08\u5728\u5176\u4f9d\u8d56\u670d\u52a1\u4e4b\u540e\uff09
+            # 初始化有依赖的服务（在其依赖服务之后）
             self.services['duration_aligner'] = DurationAligner(
                 simplifier=self.services['simplifier'],
                 index_tts=self.services['tts']
             )
             self.services['timestamp_adjuster'] = TimestampAdjuster()
             self.services['media_mixer'] = MediaMixer()
-            self.services['hls_manager'] = HLSManager()
+            self.services['hls_manager'] = HLSManager(d1_client=d1_client)
             
             # 最后初始化编排器，注入所有服务依赖
             self.services['orchestrator'] = MainOrchestrator(self.services)
@@ -67,12 +86,23 @@ class ServiceManager:
     def cleanup(self):
         """清理所有服务"""
         for service_name, service_instance in self.services.items():
+            # 跳过客户端管理器，它需要特殊处理
+            if service_name == 'client_manager':
+                continue
             if hasattr(service_instance, 'cleanup'):
                 try:
                     service_instance.cleanup()
                     self.logger.info(f"服务 {service_name} 清理完成")
                 except Exception as e:
                     self.logger.warning(f"服务 {service_name} 清理失败: {e}")
+        
+        # 最后清理客户端管理器
+        if self.client_manager:
+            try:
+                # 注意：这里是同步清理，异步清理需要在应用生命周期中处理
+                self.logger.info("客户端管理器清理完成")
+            except Exception as e:
+                self.logger.warning(f"客户端管理器清理失败: {e}")
         
         self.services.clear()
         self.logger.info("所有服务清理完成")

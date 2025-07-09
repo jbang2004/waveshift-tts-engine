@@ -138,6 +138,13 @@ class PathManager:
         self.task_id = task_id
         self.r2 = R2PathManager(task_id)
         self.temp = TempFileManager(task_id)
+        self.audio_file_path: Optional[str] = None
+        self.video_file_path: Optional[str] = None
+    
+    def set_media_paths(self, audio_path: str, video_path: str):
+        """设置音频和视频文件路径"""
+        self.audio_file_path = audio_path
+        self.video_file_path = video_path
     
     def cleanup(self):
         """清理临时文件"""

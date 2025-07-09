@@ -138,16 +138,14 @@ class D1Client:
         sql = """
         SELECT 
             id,
-            video_id,
             status,
             target_language,
-            audio_path_r2,
-            video_path_r2,
-            hls_playlist_url,
+            audio_path,
+            video_path,
             error_message,
             created_at,
-            updated_at
-        FROM tasks 
+            transcription_id
+        FROM media_tasks 
         WHERE id = ?
         """
         
@@ -161,8 +159,7 @@ class D1Client:
         self.logger.info(f"获取到任务 {task_id} 的信息")
         return task_data
     
-    async def update_task_status(self, task_id: str, status: str, error_message: str = None, 
-                               hls_playlist_url: str = None) -> bool:
+    async def update_task_status(self, task_id: str, status: str, error_message: str = None) -> bool:
         """更新任务状态"""
         try:
             # 构建更新字段
@@ -173,15 +170,10 @@ class D1Client:
                 fields.append("error_message = ?")
                 params.append(error_message)
                 
-            if hls_playlist_url is not None:
-                fields.append("hls_playlist_url = ?")
-                params.append(hls_playlist_url)
-                
-            fields.append("updated_at = datetime('now')")
             params.append(task_id)
             
             sql = f"""
-            UPDATE tasks 
+            UPDATE media_tasks 
             SET {', '.join(fields)}
             WHERE id = ?
             """
