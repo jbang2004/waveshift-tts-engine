@@ -65,7 +65,7 @@ class Simplifier:
         
         try:
             # 构建待简化的文本字典
-            texts = {str(i): s.trans_text for i, s in enumerate(sentences)}
+            texts = {str(i): s.translated_text for i, s in enumerate(sentences)}
             self.logger.debug(f"简化文本: {len(texts)}条")
             
             # 调用模型进行简化
@@ -77,7 +77,7 @@ class Simplifier:
                 
             # 处理每个句子的简化结果
             for i, s in enumerate(sentences):
-                old_text = s.trans_text
+                old_text = s.translated_text
                 str_i = str(i)
                 
                 if not any(str_i in batch_result.get(key, {}) for key in self.SIMPLIFICATION_LEVELS):
@@ -111,7 +111,7 @@ class Simplifier:
                     chosen_key = "原文"
                     chosen_text = old_text
 
-                s.trans_text = chosen_text
+                s.translated_text = chosen_text
                 self.logger.info(
                     f"精简[{chosen_key}]: {old_text} -> {chosen_text} (理想长度: {ideal_length}, 实际长度: {len(chosen_text)}, s.speed: {s.speed})"
                 )
