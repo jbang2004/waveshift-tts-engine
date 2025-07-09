@@ -317,7 +317,7 @@ def _concat_audio_segments(sentences: List[Sentence], full_audio_buffer: np.ndar
         else:
             logger.warning(
                 "句子音频生成失败或为空: text=%r, UUID=%s",
-                sentence.raw_text,
+                sentence.original_text,
                 sentence.model_input.get("uuid", "unknown")
             )
     return full_audio

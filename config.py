@@ -94,6 +94,8 @@ class AudioConfig:
     audio_overlap: int = field(default_factory=lambda: int(os.getenv("AUDIO_OVERLAP", "1024")))
     silence_fade_ms: int = field(default_factory=lambda: int(os.getenv("SILENCE_FADE_MS", "25")))
     normalization_threshold: float = field(default_factory=lambda: float(os.getenv("NORMALIZATION_THRESHOLD", "0.9")))
+    # 是否保存TTS生成的音频
+    save_tts_audio: bool = field(default_factory=lambda: os.getenv("SAVE_TTS_AUDIO", "true").lower() == "true")
     
     def __post_init__(self):
         """验证音频配置"""
@@ -248,6 +250,7 @@ class AppConfig:
             'AUDIO_OVERLAP': self.audio.audio_overlap,
             'SILENCE_FADE_MS': self.audio.silence_fade_ms,
             'NORMALIZATION_THRESHOLD': self.audio.normalization_threshold,
+            'SAVE_TTS_AUDIO': self.audio.save_tts_audio,
             
             # 翻译配置
             'TRANSLATION_MODEL': self.translation.model,

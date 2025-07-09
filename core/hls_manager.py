@@ -90,8 +90,9 @@ class HLSManager:
                         if existing_content:
                             existing_playlist = m3u8.loads(existing_content)
                             if existing_playlist.segments:
-                                # 恢复现有片段
-                                playlist.segments = existing_playlist.segments.copy()
+                                # 恢复现有片段 - 逐个添加以保持SegmentList类型
+                                for segment in existing_playlist.segments:
+                                    playlist.add_segment(segment)
                                 sequence_number = len(existing_playlist.segments)
                                 has_segments = True
                                 playlist.media_sequence = existing_playlist.media_sequence or 0

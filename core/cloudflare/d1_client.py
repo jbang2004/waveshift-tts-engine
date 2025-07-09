@@ -203,11 +203,11 @@ class D1Client:
                 speaker=str(trans.speaker_id),
                 translated_text=trans.trans_text,
                 sequence=trans.sentence_id,
-                target_duration=trans.target_duration_ms / 1000.0 if trans.target_duration_ms else None,
+                target_duration=trans.target_duration_ms if trans.target_duration_ms else None,
                 is_first=trans.is_first,
                 is_last=trans.is_last,
                 task_id=task_id,
-                ending_silence=trans.ending_silence_ms / 1000.0 if trans.ending_silence_ms else 0.0
+                ending_silence=trans.ending_silence_ms if trans.ending_silence_ms else 0.0
             )
             sentences.append(sentence)
             

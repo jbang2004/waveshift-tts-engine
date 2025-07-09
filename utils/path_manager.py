@@ -104,6 +104,11 @@ class TempFileManager:
         """音频提示目录"""
         return self.get_subdir("audio_prompts")
     
+    @property
+    def tts_output_dir(self) -> Path:
+        """TTS输出音频目录"""
+        return self.get_subdir("tts_output")
+    
     def get_temp_file(self, suffix: str = "", prefix: str = "") -> Path:
         """创建临时文件"""
         base_dir = self.create_temp_dir()

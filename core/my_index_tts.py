@@ -8,6 +8,8 @@ from typing import List, AsyncGenerator
 
 import torch
 import numpy as np
+import soundfile as sf
+from pathlib import Path
 
 # 全局 logger
 logger = logging.getLogger(__name__)
@@ -76,6 +78,16 @@ class MyIndexTTSDeployment:
 
         task_id = getattr(sentences[0], 'task_id', 'unknown') if sentences else 'unknown'
         logger.info(f"TTS: 开始为 {len(sentences)} 个句子生成音频 (任务: {task_id})")
+        
+        # 创建路径管理器用于保存TTS音频
+        from utils.path_manager import PathManager
+        path_manager = PathManager(task_id)
+        tts_output_dir = None
+        
+        # 如果启用保存，创建输出目录
+        if self.config.SAVE_TTS_AUDIO:
+            tts_output_dir = path_manager.temp.tts_output_dir
+            logger.info(f"TTS音频将保存到: {tts_output_dir}")
 
         # 批量生成音频
         batch = []
@@ -101,6 +113,30 @@ class MyIndexTTSDeployment:
                 wav_flat = wav_np.flatten().astype(np.float32) / 32767.0
                 sentence.generated_audio = wav_flat
                 sentence.duration = len(wav_flat) / sr * 1000
+                
+                # 保存TTS生成的音频（如果启用）
+                if self.config.SAVE_TTS_AUDIO and tts_output_dir:
+                    try:
+                        # 生成文件名（包含序号和说话人信息）
+                        speaker_name = sentence.speaker.replace(' ', '_').replace('/', '_')
+                        filename = f"sentence_{sentence.sequence:04d}_{speaker_name}.wav"
+                        audio_path = tts_output_dir / filename
+                        
+                        # 异步保存音频文件
+                        await asyncio.to_thread(
+                            sf.write, 
+                            str(audio_path), 
+                            wav_flat, 
+                            sr, 
+                            subtype='FLOAT'
+                        )
+                        
+                        # 在句子对象中记录保存路径
+                        sentence.tts_audio_path = str(audio_path)
+                        
+                        logger.info(f"TTS音频已保存: {filename} (时长: {sentence.duration:.1f}ms)")
+                    except Exception as save_error:
+                        logger.error(f"保存TTS音频失败: {save_error}")
             
             batch.append(sentence)
             if len(batch) >= self.batch_size:

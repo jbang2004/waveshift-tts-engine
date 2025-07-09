@@ -28,14 +28,16 @@ class Sentence:
     adjusted_start: float = field(default=0.0)
     adjusted_duration: float = field(default=0.0)
     ending_silence: float = field(default=0.0)
+    # TTS输出音频路径（可选）
+    tts_audio_path: str = field(default="")
     
     def __post_init__(self):
         """初始化后自动计算缺失字段"""
-        # 计算 target_duration（秒）
+        # 计算 target_duration（毫秒，与其他duration字段保持一致）
         if self.target_duration is None:
-            self.target_duration = (self.end_ms - self.start_ms) / 1000.0
+            self.target_duration = self.end_ms - self.start_ms  # 毫秒
         
-        # 计算其他时长相关字段
+        # 计算其他时长相关字段（全部使用毫秒）
         if self.duration == 0.0:
             self.duration = self.target_duration
         

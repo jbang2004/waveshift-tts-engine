@@ -252,6 +252,12 @@ async def change_speed_ffmpeg(audio: np.ndarray, speed: float, sample_rate: int 
     """使用 FFmpeg 的 atempo 滤镜对 PCM float32 数组进行变速，保持音高不变（异步）。"""
     if speed <= 0:
         raise ValueError(f"Invalid speed factor: {speed}")
+    
+    # FFmpeg atempo滤镜的限制：速度必须在0.5到100之间
+    # 但如果出现异常值，应该记录错误并抛出异常，而不是强制限制
+    if speed < 0.5 or speed > 100.0:
+        raise ValueError(f"Speed factor {speed} is out of FFmpeg atempo range [0.5, 100.0]. This indicates a calculation error in duration alignment.")
+    
     cmd = [
         "ffmpeg", "-y",
         "-f", "f32le", "-ar", str(sample_rate), "-ac", "1", "-i", "pipe:0",
