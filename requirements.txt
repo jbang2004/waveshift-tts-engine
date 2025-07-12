@@ -37,3 +37,4 @@ rotary_embedding_torch
 pydub
 boto3
 httpx
+audio-separator[gpu]>=0.16.0

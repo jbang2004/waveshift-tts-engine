@@ -99,6 +99,13 @@ class AudioConfig:
     # 是否清理临时文件（默认False，保留临时文件）
     cleanup_temp_files: bool = field(default_factory=lambda: os.getenv("CLEANUP_TEMP_FILES", "false").lower() == "true")
     
+    # 音频分离配置
+    enable_vocal_separation: bool = field(default_factory=lambda: os.getenv("ENABLE_VOCAL_SEPARATION", "true").lower() == "true")
+    vocal_separation_model: str = field(default_factory=lambda: os.getenv("VOCAL_SEPARATION_MODEL", "Kim_Vocal_2.onnx"))
+    vocal_separation_output_format: str = field(default_factory=lambda: os.getenv("VOCAL_SEPARATION_OUTPUT_FORMAT", "WAV"))
+    vocal_separation_sample_rate: int = field(default_factory=lambda: int(os.getenv("VOCAL_SEPARATION_SAMPLE_RATE", "24000")))
+    vocal_separation_timeout: int = field(default_factory=lambda: int(os.getenv("VOCAL_SEPARATION_TIMEOUT", "300")))
+    
     def __post_init__(self):
         """验证音频配置"""
         if self.batch_size <= 0:
@@ -254,6 +261,13 @@ class AppConfig:
             'NORMALIZATION_THRESHOLD': self.audio.normalization_threshold,
             'SAVE_TTS_AUDIO': self.audio.save_tts_audio,
             'CLEANUP_TEMP_FILES': self.audio.cleanup_temp_files,
+            
+            # 音频分离配置
+            'ENABLE_VOCAL_SEPARATION': self.audio.enable_vocal_separation,
+            'VOCAL_SEPARATION_MODEL': self.audio.vocal_separation_model,
+            'VOCAL_SEPARATION_OUTPUT_FORMAT': self.audio.vocal_separation_output_format,
+            'VOCAL_SEPARATION_SAMPLE_RATE': self.audio.vocal_separation_sample_rate,
+            'VOCAL_SEPARATION_TIMEOUT': self.audio.vocal_separation_timeout,
             
             # 翻译配置
             'TRANSLATION_MODEL': self.translation.model,

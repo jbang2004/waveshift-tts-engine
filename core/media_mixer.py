@@ -145,7 +145,7 @@ class MediaMixer:
         # 从path_manager获取媒体文件路径
         media_files['silent_video_path'] = path_manager.video_file_path
         media_files['vocals_audio_path'] = path_manager.audio_file_path
-        media_files['background_audio_path'] = None  # 暂时不使用背景音频
+        media_files['background_audio_path'] = path_manager.instrumental_file_path  # 使用分离的背景音
         media_files['video_width'] = 1920  # 默认视频尺寸
         media_files['video_height'] = 1080
         

@@ -104,9 +104,9 @@ class MainOrchestrator:
             # 更新任务状态
             await self._update_task_status(task_id, 'processing')
             
-            # 步骤1: 获取任务数据
-            self.logger.info(f"[{task_id}] 步骤1: 获取任务数据")
-            task_data = await self._fetch_task_data(task_id)
+            # 步骤1: 获取任务数据（包含音频分离）
+            self.logger.info(f"[{task_id}] 步骤1: 获取任务数据和音频分离")
+            task_data = await self._fetch_task_data(task_id, path_manager)
             
             # 步骤2: 音频切分 - 传递path_manager
             self.logger.info(f"[{task_id}] 步骤2: 音频切分")
@@ -188,14 +188,14 @@ class MainOrchestrator:
             self.logger.error(f"[{task_id}] 获取任务状态失败: {e}")
             return {"status": "error", "message": f"获取任务状态失败: {e}"}
     
-    async def _fetch_task_data(self, task_id: str) -> Dict:
+    async def _fetch_task_data(self, task_id: str, path_manager: PathManager) -> Dict:
         """获取任务数据 - 替代FetchDataStep"""
         try:
             data_fetcher = self.services.get('data_fetcher')
             if not data_fetcher:
                 raise ValueError("data_fetcher服务未找到")
             
-            task_data = await data_fetcher.fetch_task_data(task_id)
+            task_data = await data_fetcher.fetch_task_data(task_id, path_manager)
             
             if task_data.get("status") != "success":
                 raise ValueError(f"获取任务数据失败: {task_data.get('message', 'Unknown error')}")
@@ -204,17 +204,27 @@ class MainOrchestrator:
             sentences = task_data.get("sentences", [])
             audio_file_path = task_data.get("audio_file_path")
             video_file_path = task_data.get("video_file_path")
+            vocals_file_path = task_data.get("vocals_file_path")
+            instrumental_file_path = task_data.get("instrumental_file_path")
             
             if not sentences:
                 raise ValueError("没有找到句子数据")
             if not audio_file_path:
                 raise ValueError("没有找到音频文件")
             
+            # 如果有分离音频信息，记录到日志
+            if vocals_file_path and instrumental_file_path:
+                self.logger.info(f"[{task_id}] 音频分离成功: vocals={vocals_file_path}, instrumental={instrumental_file_path}")
+            elif vocals_file_path:
+                self.logger.info(f"[{task_id}] 使用原始音频作为人声: {vocals_file_path}")
+            
             self.logger.info(f"[{task_id}] 获取到 {len(sentences)} 个句子和音频文件")
             return {
                 "sentences": sentences,
-                "audio_file_path": audio_file_path,
-                "video_file_path": video_file_path
+                "audio_file_path": audio_file_path,  # 兼容性：返回人声路径
+                "video_file_path": video_file_path,
+                "vocals_file_path": vocals_file_path,
+                "instrumental_file_path": instrumental_file_path
             }
             
         except Exception as e:

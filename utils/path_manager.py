@@ -109,6 +109,11 @@ class TempFileManager:
         """TTS输出音频目录"""
         return self.get_subdir("tts_output")
     
+    @property
+    def separated_dir(self) -> Path:
+        """音频分离目录"""
+        return self.get_subdir("separated")
+    
     def get_temp_file(self, suffix: str = "", prefix: str = "") -> Path:
         """创建临时文件"""
         base_dir = self.create_temp_dir()
@@ -158,11 +163,18 @@ class PathManager:
         self.temp = TempFileManager(task_id)
         self.audio_file_path: Optional[str] = None
         self.video_file_path: Optional[str] = None
+        self.vocals_file_path: Optional[str] = None
+        self.instrumental_file_path: Optional[str] = None
     
     def set_media_paths(self, audio_path: str, video_path: str):
         """设置音频和视频文件路径"""
         self.audio_file_path = audio_path
         self.video_file_path = video_path
+    
+    def set_separated_paths(self, vocals_path: str, instrumental_path: str):
+        """设置分离后的音频文件路径"""
+        self.vocals_file_path = vocals_path
+        self.instrumental_file_path = instrumental_path
     
     def cleanup(self, force=False):
         """清理临时文件

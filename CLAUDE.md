@@ -62,6 +62,13 @@ python regression_test.py
 - `TRANSLATION_MODEL`: 翻译模型选择（用于文本简化：deepseek/gemini/grok/groq）
 - 相应的 API 密钥（如 `DEEPSEEK_API_KEY`、`GEMINI_API_KEY` 等）
 
+#### 音频分离配置（新增）
+- `ENABLE_VOCAL_SEPARATION`: 启用音频分离（默认true）
+- `VOCAL_SEPARATION_MODEL`: 分离模型（默认Kim_Vocal_2.onnx）
+- `VOCAL_SEPARATION_OUTPUT_FORMAT`: 输出格式（默认WAV）
+- `VOCAL_SEPARATION_SAMPLE_RATE`: 采样率（默认24000）
+- `VOCAL_SEPARATION_TIMEOUT`: 分离超时时间（默认300秒）
+
 ## 开发注意事项
 
 ### 添加新功能时
@@ -271,3 +278,28 @@ CLEANUP_TEMP_FILES=true  # 自动清理临时文件
 - 默认保留临时文件用于调试
 - 需要手动清理时，设置 `CLEANUP_TEMP_FILES=true`
 - 临时目录路径会在日志中显示，方便查找
+
+## 🧪 测试任务执行
+
+### 启动TTS任务
+```bash
+# 使用无代理方式发起请求（避免代理干扰）
+curl --noproxy '*' -X POST http://localhost:8000/api/start_tts \
+  -H "Content-Type: application/json" \
+  -d '{"task_id": "d8a62769-4bc3-490c-90c2-0991b418344a"}'
+```
+
+### 查询任务状态
+```bash
+# 查询任务处理状态
+curl --noproxy '*' -X GET http://localhost:8000/api/task/d8a62769-4bc3-490c-90c2-0991b418344a/status | python3 -m json.tool
+```
+
+### 可用的测试任务ID
+- `d8a62769-4bc3-490c-90c2-0991b418344a` - 包含126个句子的测试任务
+
+### 预期响应
+- **启动任务**: `{"status":"processing","task_id":"xxx","message":"TTS合成流程已开始"}`
+- **任务状态**: 
+  - 处理中: `{"task_id":"xxx","status":"processing","hls_playlist_url":null}`
+  - 完成: `{"task_id":"xxx","status":"completed","hls_playlist_url":"https://xxx.m3u8"}`
