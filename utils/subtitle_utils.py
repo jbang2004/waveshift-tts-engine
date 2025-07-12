@@ -61,9 +61,9 @@ def generate_subtitles_for_segment(
 
         # --- 计算字幕开始时间 ---
         # 处理首句可能有的开头静音
-        if hasattr(s, 'is_first') and s.is_first and hasattr(s, 'start') and isinstance(s.start, (int, float)) and s.start > 0:
-            subtitle_start_ms = s.start
-            logger.debug(f"首句，应用开头静音偏移: {s.start}ms")
+        if s.is_first and s.start_ms > 0:
+            subtitle_start_ms = s.start_ms
+            logger.debug(f"首句，应用开头静音偏移: {s.start_ms}ms")
         else:
             subtitle_start_ms = s.adjusted_start - start_time_ms
         

@@ -39,10 +39,10 @@ async def apply_speed_and_silence(sentences: List[Sentence], sample_rate: int = 
             speech_duration = original_duration
             
             # --- 1. 为第一个句子在音频前添加静音 ---
-            if hasattr(sentence, 'is_first') and sentence.is_first and hasattr(sentence, 'start') and sentence.start > 0:
-                silence_samples = int(sentence.start * sample_rate / 1000)
+            if sentence.is_first and sentence.start_ms > 0:
+                silence_samples = int(sentence.start_ms * sample_rate / 1000)
                 if silence_samples > 0:
-                    logger.info(f"[{task_id}] 句子 {sentence.sequence}: 在开头添加 {sentence.start:.2f}毫秒静音 ({silence_samples} 个采样点)")
+                    logger.info(f"[{task_id}] 句子 {sentence.sequence}: 在开头添加 {sentence.start_ms:.2f}毫秒静音 ({silence_samples} 个采样点)")
                     
                     # 对音频开头添加淡入效果
                     fade_len = min(fade_length, len(sentence.generated_audio) // 4)

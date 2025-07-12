@@ -261,7 +261,9 @@ class D1Client:
             content_type,
             speaker,
             original_text,
-            translated_text
+            translated_text,
+            is_first,
+            is_last
         FROM transcription_segments 
         WHERE transcription_id = ? 
         ORDER BY sequence ASC
@@ -286,13 +288,41 @@ class D1Client:
                 original_text=segment['original_text'] or '',
                 translated_text=segment['translated_text'] or '',
                 task_id=task_id,
-                is_first=(segment['sequence'] == 1),
-                is_last=(segment['sequence'] == total_segments)
+                is_first=bool(segment['is_first']),
+                is_last=bool(segment['is_last'])
             )
             sentences.append(sentence)
         
+        # 计算target_duration - 使用下一句start减去当前句start
+        self._calculate_target_durations(sentences)
+        
         self.logger.info(f"获取到任务 {task_id} 的 {len(sentences)} 个句子")
         return sentences
+    
+    def _calculate_target_durations(self, sentences: List) -> None:
+        """计算每句话的目标时长（可用区间）
+        
+        Args:
+            sentences: 句子列表
+        """
+        if not sentences:
+            return
+            
+        for i, sentence in enumerate(sentences):
+            if i < len(sentences) - 1:
+                # 当前句的可用区间 = 下一句开始时间 - 当前句开始时间
+                sentence.target_duration = sentences[i + 1].start_ms - sentence.start_ms
+                self.logger.debug(
+                    f"句子 {sentence.sequence}: target_duration = {sentence.target_duration:.2f}ms "
+                    f"(下一句start: {sentences[i + 1].start_ms} - 当前start: {sentence.start_ms})"
+                )
+            else:
+                # 最后一句保持原逻辑：end - start
+                sentence.target_duration = sentence.end_ms - sentence.start_ms
+                self.logger.debug(
+                    f"句子 {sentence.sequence} (最后一句): target_duration = {sentence.target_duration:.2f}ms "
+                    f"(end: {sentence.end_ms} - start: {sentence.start_ms})"
+                )
     
     async def get_worker_media_paths(self, task_id: str) -> Dict[str, str]:
         """获取 Worker 的媒体文件路径"""

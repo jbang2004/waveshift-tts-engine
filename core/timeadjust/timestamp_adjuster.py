@@ -10,7 +10,7 @@ class TimestampAdjuster:
             return sentences
         
         logger.info(f"开始处理 {len(sentences)} 个句子的时间戳调整")
-        current_time = start_time if start_time is not None else sentences[0].start
+        current_time = start_time if start_time is not None else sentences[0].start_ms
         
         for sentence in sentences:
             if sentence.generated_audio is not None:
