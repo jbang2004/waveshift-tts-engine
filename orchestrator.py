@@ -96,7 +96,9 @@ class MainOrchestrator:
         start_time = time.time()
         self.logger.info(f"[{task_id}] 开始完整TTS流程")
         
-        path_manager = None
+        # 在任务开始时创建统一的PathManager
+        path_manager = PathManager(task_id)
+        self.logger.info(f"[{task_id}] 创建统一的PathManager: {path_manager.temp.temp_dir}")
         
         try:
             # 更新任务状态
@@ -106,16 +108,16 @@ class MainOrchestrator:
             self.logger.info(f"[{task_id}] 步骤1: 获取任务数据")
             task_data = await self._fetch_task_data(task_id)
             
-            # 步骤2: 音频切分
+            # 步骤2: 音频切分 - 传递path_manager
             self.logger.info(f"[{task_id}] 步骤2: 音频切分")
             segmented_sentences = await self._segment_audio(
-                task_id, task_data['audio_file_path'], task_data['sentences']
+                task_id, task_data['audio_file_path'], task_data['sentences'], path_manager
             )
             
-            # 步骤3: 初始化HLS管理器
+            # 步骤3: 初始化HLS管理器 - 使用已创建的path_manager
             self.logger.info(f"[{task_id}] 步骤3: 初始化HLS管理器")
-            path_manager = await self._init_hls_manager(
-                task_id, task_data['audio_file_path'], task_data['video_file_path']
+            await self._init_hls_manager(
+                task_id, task_data['audio_file_path'], task_data['video_file_path'], path_manager
             )
             
             # 步骤4: TTS流处理
@@ -219,15 +221,22 @@ class MainOrchestrator:
             self.logger.error(f"[{task_id}] 获取任务数据异常: {e}")
             raise
     
-    async def _segment_audio(self, task_id: str, audio_file_path: str, sentences: list) -> list:
-        """音频切分 - 替代SegmentAudioStep"""
+    async def _segment_audio(self, task_id: str, audio_file_path: str, sentences: list, path_manager: PathManager) -> list:
+        """音频切分 - 替代SegmentAudioStep
+        
+        Args:
+            task_id: 任务ID
+            audio_file_path: 音频文件路径
+            sentences: 句子列表
+            path_manager: 共享的路径管理器
+        """
         try:
             audio_segmenter = self.services.get('audio_segmenter')
             if not audio_segmenter:
                 raise ValueError("audio_segmenter服务未找到")
             
             segmented_sentences = await audio_segmenter.segment_audio_for_sentences(
-                task_id, audio_file_path, sentences
+                task_id, audio_file_path, sentences, path_manager
             )
             
             if not segmented_sentences:
@@ -240,15 +249,19 @@ class MainOrchestrator:
             self.logger.error(f"[{task_id}] 音频切分异常: {e}")
             raise
     
-    async def _init_hls_manager(self, task_id: str, audio_file_path: str, video_file_path: str) -> PathManager:
-        """初始化HLS管理器 - 替代InitHLSStep"""
+    async def _init_hls_manager(self, task_id: str, audio_file_path: str, video_file_path: str, path_manager: PathManager) -> None:
+        """初始化HLS管理器 - 替代InitHLSStep
+        
+        Args:
+            task_id: 任务ID
+            audio_file_path: 音频文件路径
+            video_file_path: 视频文件路径
+            path_manager: 共享的路径管理器
+        """
         try:
             hls_manager = self.services.get('hls_manager')
             if not hls_manager:
                 raise ValueError("hls_manager服务未找到")
-            
-            # 创建路径管理器
-            path_manager = PathManager(task_id)
             
             # 设置媒体文件路径
             if audio_file_path and video_file_path:
@@ -261,7 +274,6 @@ class MainOrchestrator:
                 raise ValueError(f"HLS管理器初始化失败: {response}")
             
             self.logger.info(f"[{task_id}] HLS管理器初始化完成")
-            return path_manager
             
         except Exception as e:
             self.logger.error(f"[{task_id}] 初始化HLS管理器异常: {e}")
@@ -285,8 +297,8 @@ class MainOrchestrator:
             processed_segment_paths = []
             batch_counter = 0
             
-            # TTS批处理流
-            async for tts_batch in tts.generate_audio_stream(sentences):
+            # TTS批处理流 - 传递path_manager以确保使用统一的临时目录
+            async for tts_batch in tts.generate_audio_stream(sentences, path_manager):
                 if not tts_batch:
                     continue
                     
@@ -333,8 +345,8 @@ class MainOrchestrator:
                                   duration_aligner, timestamp_adjuster, media_mixer, hls_manager) -> Dict:
         """处理单个TTS批次"""
         try:
-            # 时长对齐
-            aligned_batch = await duration_aligner(batch, max_speed=1.2)
+            # 时长对齐 - 传递path_manager
+            aligned_batch = await duration_aligner(batch, max_speed=1.2, path_manager=path_manager)
             if not aligned_batch:
                 self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时长对齐失败")
                 return None

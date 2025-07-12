@@ -218,3 +218,56 @@ video_data = await r2_client.download_video(media_paths['video_path'])
 - R2文件下载: > 1MB/s
 - 内存使用: 相比URL格式减少10-15%
 - 路径处理: 消除URL解析开销
+
+## 🎵 TTS音频保存功能
+
+### 功能概述
+
+WaveShift TTS Engine 支持保存TTS生成的音频文件，方便试听每个句子的合成效果。
+
+### 启用方法
+
+在 `.env` 文件中设置：
+```bash
+SAVE_TTS_AUDIO=true      # 启用保存TTS音频（默认）
+SAVE_TTS_AUDIO=false     # 禁用保存
+
+CLEANUP_TEMP_FILES=false # 保留临时文件（默认）
+CLEANUP_TEMP_FILES=true  # 自动清理临时文件
+```
+
+### 文件保存位置
+
+**重构后的统一存储结构**：
+```
+/tmp/tts_{task_id}_{random}/
+├── media/               # 下载的媒体文件
+├── segments/            # 处理后的片段
+├── audio_prompts/       # 音频切片（语音克隆参考）
+└── tts_output/          # TTS生成的音频（统一存储）
+    ├── sentence_0001_Speaker_A.wav
+    ├── sentence_0002_Speaker_A.wav
+    ├── sentence_0003_Speaker_B.wav
+    └── ...
+```
+
+### 文件格式
+
+- **格式**: WAV
+- **采样率**: 24000 Hz
+- **编码**: 32位浮点
+- **命名**: `sentence_{序号:04d}_{说话人}.wav`
+
+### 重要更新（2025-07-11）
+
+**PathManager生命周期优化**：
+- 修复了每次TTS调用创建新临时目录的问题
+- 现在整个任务使用统一的临时目录
+- 所有TTS音频文件集中存储在同一个 `tts_output` 目录下
+- 默认不清理临时文件，便于调试和验证
+
+### 注意事项
+
+- 默认保留临时文件用于调试
+- 需要手动清理时，设置 `CLEANUP_TEMP_FILES=true`
+- 临时目录路径会在日志中显示，方便查找

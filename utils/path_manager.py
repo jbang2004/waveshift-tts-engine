@@ -116,8 +116,21 @@ class TempFileManager:
         os.close(fd)  # 关闭文件描述符
         return Path(path)
     
-    def cleanup(self):
-        """清理临时文件"""
+    def cleanup(self, force=False):
+        """清理临时文件
+        
+        Args:
+            force: 是否强制清理，忽略配置选项
+        """
+        # 检查是否应该清理临时文件
+        from config import get_config
+        config = get_config()
+        should_cleanup = force or getattr(config, 'CLEANUP_TEMP_FILES', False)
+        
+        if not should_cleanup:
+            logger.info(f"保留临时目录（CLEANUP_TEMP_FILES=false）: {self.temp_dir}")
+            return
+            
         if self.temp_dir and self.temp_dir.exists():
             try:
                 shutil.rmtree(self.temp_dir)
@@ -151,6 +164,10 @@ class PathManager:
         self.audio_file_path = audio_path
         self.video_file_path = video_path
     
-    def cleanup(self):
-        """清理临时文件"""
-        self.temp.cleanup()
+    def cleanup(self, force=False):
+        """清理临时文件
+        
+        Args:
+            force: 是否强制清理，忽略配置选项
+        """
+        self.temp.cleanup(force=force)

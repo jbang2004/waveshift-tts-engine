@@ -96,6 +96,8 @@ class AudioConfig:
     normalization_threshold: float = field(default_factory=lambda: float(os.getenv("NORMALIZATION_THRESHOLD", "0.9")))
     # 是否保存TTS生成的音频
     save_tts_audio: bool = field(default_factory=lambda: os.getenv("SAVE_TTS_AUDIO", "true").lower() == "true")
+    # 是否清理临时文件（默认False，保留临时文件）
+    cleanup_temp_files: bool = field(default_factory=lambda: os.getenv("CLEANUP_TEMP_FILES", "false").lower() == "true")
     
     def __post_init__(self):
         """验证音频配置"""
@@ -251,6 +253,7 @@ class AppConfig:
             'SILENCE_FADE_MS': self.audio.silence_fade_ms,
             'NORMALIZATION_THRESHOLD': self.audio.normalization_threshold,
             'SAVE_TTS_AUDIO': self.audio.save_tts_audio,
+            'CLEANUP_TEMP_FILES': self.audio.cleanup_temp_files,
             
             # 翻译配置
             'TRANSLATION_MODEL': self.translation.model,

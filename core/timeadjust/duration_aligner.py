@@ -18,8 +18,14 @@ class DurationAligner:
         
         logger.info("时长对齐器初始化完成")
 
-    async def __call__(self, sentences: List[Sentence], max_speed: float = 1.1) -> List[Sentence]:
-        """执行句子时长对齐"""
+    async def __call__(self, sentences: List[Sentence], max_speed: float = 1.1, path_manager=None) -> List[Sentence]:
+        """执行句子时长对齐
+        
+        Args:
+            sentences: 句子列表
+            max_speed: 最大速度
+            path_manager: 共享的路径管理器（可选）
+        """
         if not sentences:
             logger.warning("时长对齐：收到空句子列表")
             return sentences
@@ -39,7 +45,7 @@ class DurationAligner:
             
             if fast_indices:
                 logger.info(f"[{task_id}] 发现 {len(fast_indices)} 个超速句子，进行简化处理")
-                return await self._process_fast_sentences(task_id, aligned_sentences, fast_indices, max_speed)
+                return await self._process_fast_sentences(task_id, aligned_sentences, fast_indices, max_speed, path_manager)
             else:
                 logger.info(f"[{task_id}] 所有句子速度正常，应用速度调整")
                 await apply_speed_and_silence(aligned_sentences, self.sample_rate)
@@ -57,8 +63,16 @@ class DurationAligner:
             return sentences
 
     async def _process_fast_sentences(self, task_id: str, aligned_sentences: List[Sentence], 
-                                    fast_indices: List[int], max_speed: float) -> List[Sentence]:
-        """处理超速句子"""
+                                    fast_indices: List[int], max_speed: float, path_manager=None) -> List[Sentence]:
+        """处理超速句子
+        
+        Args:
+            task_id: 任务ID
+            aligned_sentences: 对齐后的句子列表
+            fast_indices: 超速句子的索引
+            max_speed: 最大速度
+            path_manager: 共享的路径管理器（可选）
+        """
         try:
             # 提取超速句子
             fast_sentences = [aligned_sentences[idx] for idx in fast_indices]
@@ -70,8 +84,8 @@ class DurationAligner:
                 await apply_speed_and_silence(aligned_sentences, self.sample_rate)
                 return aligned_sentences
             
-            # 重新生成音频
-            refined_sentences = await self._regenerate_audio(task_id, simplified_results)
+            # 重新生成音频 - 传递path_manager
+            refined_sentences = await self._regenerate_audio(task_id, simplified_results, path_manager)
             if not refined_sentences or len(refined_sentences) != len(fast_indices):
                 logger.warning(f"[{task_id}] 音频重新生成失败，使用原始对齐结果")
                 await apply_speed_and_silence(aligned_sentences, self.sample_rate)
@@ -110,12 +124,18 @@ class DurationAligner:
             logger.error(f"[{task_id}] 简化失败: {e}")
             return []
 
-    async def _regenerate_audio(self, task_id: str, simplified_results: List[Sentence]) -> List[Sentence]:
-        """重新生成音频"""
+    async def _regenerate_audio(self, task_id: str, simplified_results: List[Sentence], path_manager=None) -> List[Sentence]:
+        """重新生成音频
+        
+        Args:
+            task_id: 任务ID
+            simplified_results: 简化后的句子列表
+            path_manager: 共享的路径管理器（可选）
+        """
         refined_sentences = []
         try:
             logger.info(f"[{task_id}] 开始重新生成 {len(simplified_results)} 个句子的音频")
-            async for tts_batch in self.index_tts.generate_audio_stream(simplified_results):
+            async for tts_batch in self.index_tts.generate_audio_stream(simplified_results, path_manager):
                 if tts_batch:
                     refined_sentences.extend(tts_batch)
             logger.info(f"[{task_id}] 音频重新生成完成，获得 {len(refined_sentences)} 个句子")

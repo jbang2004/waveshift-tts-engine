@@ -65,12 +65,13 @@ class MyIndexTTSDeployment:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    async def generate_audio_stream(self, sentences: List) -> AsyncGenerator[List, None]:
+    async def generate_audio_stream(self, sentences: List, path_manager=None) -> AsyncGenerator[List, None]:
         """
         为句子列表生成音频流
         
         Args:
             sentences: 句子列表
+            path_manager: 共享的路径管理器（可选）
         """
         if not sentences:
             logger.warning("TTS: 没有可处理的句子，跳过生成。")
@@ -79,9 +80,12 @@ class MyIndexTTSDeployment:
         task_id = getattr(sentences[0], 'task_id', 'unknown') if sentences else 'unknown'
         logger.info(f"TTS: 开始为 {len(sentences)} 个句子生成音频 (任务: {task_id})")
         
-        # 创建路径管理器用于保存TTS音频
-        from utils.path_manager import PathManager
-        path_manager = PathManager(task_id)
+        # 使用传入的path_manager，如果没有则创建新的（向后兼容）
+        if path_manager is None:
+            from utils.path_manager import PathManager
+            path_manager = PathManager(task_id)
+            logger.warning(f"TTS: 未传入path_manager，创建新的临时目录")
+        
         tts_output_dir = None
         
         # 如果启用保存，创建输出目录

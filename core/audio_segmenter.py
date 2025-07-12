@@ -309,7 +309,7 @@ class AudioSegmenter:
     
     @log_and_continue(default_return=[], log_level="ERROR")
     async def segment_audio_for_sentences(self, task_id: str, audio_file_path: str, 
-                                        sentences: List[Sentence]) -> List[Sentence]:
+                                        sentences: List[Sentence], path_manager=None) -> List[Sentence]:
         """
         为句子列表切分音频，基于说话人分组的智能切片
         
@@ -317,6 +317,7 @@ class AudioSegmenter:
             task_id: 任务ID
             audio_file_path: 音频文件路径
             sentences: 句子列表
+            path_manager: 共享的路径管理器（可选）
             
         Returns:
             List[Sentence]: 更新了音频路径的句子列表
@@ -336,8 +337,11 @@ class AudioSegmenter:
         
         self.logger.info(f"[{task_id}] 生成了 {len(clips_library)} 个音频切片")
         
-        # 创建音频输出目录
-        path_manager = PathManager(task_id)
+        # 使用传入的path_manager，如果没有则创建新的（向后兼容）
+        if path_manager is None:
+            path_manager = PathManager(task_id)
+            self.logger.warning(f"[{task_id}] AudioSegmenter: 未传入path_manager，创建新的临时目录")
+        
         audio_clips_dir = path_manager.temp.audio_prompts_dir
         
         # 提取并保存音频切片
