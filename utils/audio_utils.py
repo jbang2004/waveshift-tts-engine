@@ -91,10 +91,11 @@ async def mix_with_background(
         logger.debug(f"mix_with_background: 读取背景音频: {bg_path}, 长度: {len(background_audio)}, 采样率: {sr}") # 使用 debug 级别
         background_audio = np.asarray(background_audio, dtype=np.float32)
         
-        # 如果是立体声，转换为单声道（取平均值）
-        if background_audio.ndim == 2:
-            logger.info(f"mix_with_background: 背景音频是立体声 {background_audio.shape}，转换为单声道")
-            background_audio = np.mean(background_audio, axis=1)
+        # 验证音频格式（VocalSeparator已确保单声道输出）
+        if background_audio.ndim != 1:
+            logger.error(f"mix_with_background: 背景音频格式异常 {background_audio.shape}，期望单声道")
+            return audio_data * vocals_volume  # 降级处理，只返回人声
+        logger.debug(f"mix_with_background: 背景音频格式正确 {background_audio.shape}")
         if sr != sample_rate:
             logger.warning(
                 f"背景音采样率={sr} 与目标={sample_rate}不匹配, 未做重采样, 可能有问题."

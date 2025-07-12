@@ -203,6 +203,31 @@ class VocalSeparator:
                     except Exception:
                         pass
             
+            # 转换为单声道（统一音频格式，避免后续重复转换）
+            try:
+                import soundfile as sf
+                import numpy as np
+                
+                # 读取分离后的音频
+                vocals_data, sr = sf.read(str(final_vocals_path))
+                instrumental_data, _ = sf.read(str(final_instrumental_path))
+                
+                # 如果是立体声，转换为单声道
+                if vocals_data.ndim == 2:
+                    self.logger.info(f"人声音频是立体声 {vocals_data.shape}，转换为单声道")
+                    vocals_data = np.mean(vocals_data, axis=1)
+                if instrumental_data.ndim == 2:
+                    self.logger.info(f"背景音频是立体声 {instrumental_data.shape}，转换为单声道")
+                    instrumental_data = np.mean(instrumental_data, axis=1)
+                
+                # 重新保存为单声道
+                sf.write(str(final_vocals_path), vocals_data, sr, subtype='FLOAT')
+                sf.write(str(final_instrumental_path), instrumental_data, sr, subtype='FLOAT')
+                
+                self.logger.info(f"音频已统一转换为单声道格式")
+            except Exception as e:
+                self.logger.warning(f"声道转换失败，使用原始格式: {e}")
+            
             return {
                 'success': True,
                 'vocals_path': str(final_vocals_path),

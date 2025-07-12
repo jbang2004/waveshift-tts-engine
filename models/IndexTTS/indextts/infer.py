@@ -296,9 +296,9 @@ class IndexTTS:
         # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
         if self.cache_cond_mel is None or self.cache_audio_prompt != audio_prompt:
             audio, sr = torchaudio.load(audio_prompt)
-            audio = torch.mean(audio, dim=0, keepdim=True)
+            # 只有多声道才转换为单声道（修复原逻辑bug并优化性能）
             if audio.shape[0] > 1:
-                audio = audio[0].unsqueeze(0)
+                audio = torch.mean(audio, dim=0, keepdim=True)
             audio = torchaudio.transforms.Resample(sr, 24000)(audio)
             cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
             cond_mel_frame = cond_mel.shape[-1]
@@ -508,9 +508,9 @@ class IndexTTS:
         # 如果参考音频改变了，才需要重新生成 cond_mel, 提升速度
         if self.cache_cond_mel is None or self.cache_audio_prompt != audio_prompt:
             audio, sr = torchaudio.load(audio_prompt)
-            audio = torch.mean(audio, dim=0, keepdim=True)
+            # 只有多声道才转换为单声道（修复原逻辑bug并优化性能）
             if audio.shape[0] > 1:
-                audio = audio[0].unsqueeze(0)
+                audio = torch.mean(audio, dim=0, keepdim=True)
             audio = torchaudio.transforms.Resample(sr, 24000)(audio)
             cond_mel = MelSpectrogramFeatures()(audio).to(self.device)
             cond_mel_frame = cond_mel.shape[-1]
