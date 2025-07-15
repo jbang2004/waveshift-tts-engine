@@ -7,7 +7,7 @@ import asyncio
 import time
 import gc
 import torch
-from typing import Dict
+from typing import Dict, List, Tuple
 
 from config import get_config
 from core.cloudflare.d1_client import D1Client
@@ -290,7 +290,7 @@ class MainOrchestrator:
             raise
     
     async def _process_tts_stream(self, task_id: str, sentences: list, video_file_path: str, path_manager: PathManager) -> Dict:
-        """TTS流处理 - 替代TTSStreamProcessingStep"""
+        """TTS流处理 - 使用生产者-消费者模式解耦TTS生成与后续处理"""
         try:
             # 获取服务实例
             tts = self.services.get('tts')
@@ -302,33 +302,53 @@ class MainOrchestrator:
             if not all([tts, duration_aligner, timestamp_adjuster, media_mixer, hls_manager]):
                 raise ValueError("TTS服务实例未完整找到")
             
-            added_hls_segments = 0
-            current_audio_time_ms = 0.0
-            processed_segment_paths = []
-            batch_counter = 0
+            self.logger.info(f"[{task_id}] 启动解耦TTS流处理，句子数: {len(sentences)}")
             
-            # TTS批处理流 - 传递path_manager以确保使用统一的临时目录
-            async for tts_batch in tts.generate_audio_stream(sentences, path_manager):
-                if not tts_batch:
-                    continue
-                    
-                self.logger.info(f"[{task_id}] 处理TTS批次 {batch_counter}，包含 {len(tts_batch)} 个句子")
-                
-                # 处理单个批次
-                batch_result = await self._process_single_batch(
-                    task_id, tts_batch, batch_counter, current_audio_time_ms,
-                    video_file_path, path_manager, duration_aligner, timestamp_adjuster, media_mixer, hls_manager
-                )
-                
-                if batch_result:
-                    added_hls_segments += 1
-                    processed_segment_paths.append(batch_result["segment_path"])
-                    current_audio_time_ms = batch_result["new_time_ms"]
-                    batch_counter += 1
-                    self.logger.info(f"[{task_id}] 成功添加HLS段 {batch_counter}")
-                
-                # 清理内存
-                self._clean_memory()
+            # 创建异步队列，设置最大容量避免内存堆积
+            tts_queue = asyncio.Queue(maxsize=5)  # 最多缓存5个批次
+            
+            # 并发启动TTS生产者和处理消费者
+            producer_task = asyncio.create_task(
+                self._tts_producer(task_id, tts, sentences, path_manager, tts_queue),
+                name=f"tts_producer_{task_id}"
+            )
+            
+            consumer_task = asyncio.create_task(
+                self._processing_consumer(
+                    task_id, tts_queue, video_file_path, path_manager,
+                    duration_aligner, timestamp_adjuster, media_mixer, hls_manager
+                ),
+                name=f"processing_consumer_{task_id}"
+            )
+            
+            # 等待两个任务完成，添加并发监控
+            self.logger.info(f"[{task_id}] TTS生产者和处理消费者并发启动")
+            concurrent_start_time = time.time()
+            
+            # 使用gather监控并发执行
+            producer_result, consumer_result = await asyncio.gather(
+                producer_task, consumer_task, return_exceptions=True
+            )
+            
+            concurrent_duration = time.time() - concurrent_start_time
+            self.logger.info(f"[{task_id}] 并发处理完成，总耗时: {concurrent_duration:.2f}s")
+            
+            # 检查结果
+            if isinstance(producer_result, Exception):
+                self.logger.error(f"[{task_id}] TTS生产者异常: {producer_result}")
+                return {"status": "error", "message": f"TTS生产失败: {producer_result}"}
+            
+            if isinstance(consumer_result, Exception):
+                self.logger.error(f"[{task_id}] 处理消费者异常: {consumer_result}")
+                return {"status": "error", "message": f"后续处理失败: {consumer_result}"}
+            
+            # 获取消费者结果
+            success, processed_segment_paths, added_hls_segments = consumer_result
+            
+            if not success:
+                return {"status": "error", "message": "批次处理失败"}
+            
+            self.logger.info(f"[{task_id}] 并发处理完成，共生成 {added_hls_segments} 个HLS段")
             
             # HLS最终化
             self.logger.info(f"[{task_id}] 开始HLS最终化处理")
@@ -339,7 +359,7 @@ class MainOrchestrator:
             )
             
             if result and result.get("status") == "success":
-                self.logger.info(f"[{task_id}] HLS最终化成功，生成 {added_hls_segments} 个段")
+                self.logger.info(f"[{task_id}] HLS最终化成功，解耦流程完成")
                 return result
             else:
                 err_msg = result.get('message') if result else '无效的最终化结果'
@@ -347,7 +367,7 @@ class MainOrchestrator:
                 return {"status": "error", "message": err_msg}
                 
         except Exception as e:
-            self.logger.error(f"[{task_id}] TTS流处理异常: {e}")
+            self.logger.error(f"[{task_id}] 解耦TTS流处理异常: {e}")
             return {"status": "error", "message": f"TTS流处理失败: {e}"}
     
     async def _process_single_batch(self, task_id: str, batch: list, batch_counter: int,
@@ -399,3 +419,192 @@ class MainOrchestrator:
         except Exception as e:
             self.logger.error(f"[{task_id}] 处理批次 {batch_counter} 异常: {e}")
             return None
+
+    async def _tts_producer(self, task_id: str, tts_service, sentences: List, path_manager: PathManager, 
+                           tts_queue: asyncio.Queue) -> None:
+        """
+        TTS生产者协程 - 专门负责TTS音频生成，将完成的批次放入队列
+        
+        Args:
+            task_id: 任务ID
+            tts_service: TTS服务实例
+            sentences: 句子列表
+            path_manager: 路径管理器
+            tts_queue: 异步队列，用于传递TTS完成的批次
+        """
+        start_time = time.time()
+        batch_counter = 0
+        failed_batches = 0
+        
+        try:
+            self.logger.info(f"[{task_id}] TTS生产者启动，待处理句子数: {len(sentences)}")
+            
+            # 使用TTS生成器逐批次生成音频
+            async for tts_batch in tts_service.generate_audio_stream(sentences, path_manager):
+                if not tts_batch:
+                    continue
+                
+                batch_start_time = time.time()
+                try:
+                    # 验证TTS批次质量
+                    valid_sentences = [s for s in tts_batch if s.generated_audio is not None]
+                    if len(valid_sentences) != len(tts_batch):
+                        self.logger.warning(
+                            f"[{task_id}] TTS批次 {batch_counter} 质量检查: "
+                            f"{len(valid_sentences)}/{len(tts_batch)} 个句子生成成功"
+                        )
+                    
+                    self.logger.info(
+                        f"[{task_id}] TTS生产者完成批次 {batch_counter}，"
+                        f"包含 {len(tts_batch)} 个句子，队列大小: {tts_queue.qsize()}"
+                    )
+                    
+                    # 将完成的TTS批次放入队列
+                    await tts_queue.put({
+                        'type': 'batch',
+                        'data': tts_batch,
+                        'batch_counter': batch_counter
+                    })
+                    
+                    batch_duration = time.time() - batch_start_time
+                    batch_counter += 1
+                    
+                    self.logger.info(
+                        f"[{task_id}] TTS生产者批次 {batch_counter-1} 入队完成，"
+                        f"耗时: {batch_duration:.2f}s"
+                    )
+                    
+                except Exception as e:
+                    failed_batches += 1
+                    self.logger.error(f"[{task_id}] TTS生产者批次 {batch_counter} 处理失败: {e}")
+                    continue
+                
+                # 清理内存
+                self._clean_memory()
+            
+            # 发送完成信号
+            await tts_queue.put({'type': 'complete'})
+            
+            # 计算性能指标
+            total_duration = time.time() - start_time
+            success_rate = (batch_counter / (batch_counter + failed_batches) * 100) if (batch_counter + failed_batches) > 0 else 0
+            
+            self.logger.info(
+                f"[{task_id}] TTS生产者完成 - "
+                f"成功批次: {batch_counter}, 失败批次: {failed_batches}, "
+                f"成功率: {success_rate:.1f}%, 总耗时: {total_duration:.2f}s"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"[{task_id}] TTS生产者严重异常: {e}", exc_info=True)
+            # 发送错误信号
+            try:
+                await tts_queue.put({'type': 'error', 'message': str(e)})
+            except Exception:
+                self.logger.error(f"[{task_id}] 无法发送错误信号到队列")
+            raise
+
+    async def _processing_consumer(self, task_id: str, tts_queue: asyncio.Queue, video_file_path: str, 
+                                 path_manager: PathManager, duration_aligner, timestamp_adjuster, 
+                                 media_mixer, hls_manager) -> Tuple[bool, List[str], int]:
+        """
+        处理消费者协程 - 专门负责后续处理，从队列获取TTS批次进行处理
+        
+        Args:
+            task_id: 任务ID
+            tts_queue: 异步队列，从中获取TTS完成的批次
+            video_file_path: 视频文件路径
+            path_manager: 路径管理器
+            duration_aligner: 时长对齐器
+            timestamp_adjuster: 时间戳调整器
+            media_mixer: 媒体混合器
+            hls_manager: HLS管理器
+            
+        Returns:
+            Tuple[bool, List[str], int]: (是否成功, 处理的段路径列表, HLS段数量)
+        """
+        start_time = time.time()
+        processed_segment_paths = []
+        added_hls_segments = 0
+        current_audio_time_ms = 0.0
+        failed_batches = 0
+        
+        try:
+            self.logger.info(f"[{task_id}] 处理消费者启动")
+            
+            while True:
+                try:
+                    # 设置队列获取超时，避免无限等待
+                    queue_item = await asyncio.wait_for(tts_queue.get(), timeout=60.0)
+                    
+                    # 检查任务项类型
+                    if queue_item['type'] == 'complete':
+                        self.logger.info(f"[{task_id}] 处理消费者收到完成信号")
+                        break
+                    elif queue_item['type'] == 'error':
+                        error_msg = queue_item.get('message', '未知TTS错误')
+                        self.logger.error(f"[{task_id}] 处理消费者收到错误信号: {error_msg}")
+                        return False, processed_segment_paths, added_hls_segments
+                    elif queue_item['type'] == 'batch':
+                        # 处理TTS批次
+                        tts_batch = queue_item['data']
+                        batch_counter = queue_item['batch_counter']
+                        batch_start_time = time.time()
+                        
+                        self.logger.info(
+                            f"[{task_id}] 处理消费者开始处理批次 {batch_counter}，"
+                            f"包含 {len(tts_batch)} 个句子，队列大小: {tts_queue.qsize()}"
+                        )
+                        
+                        # 执行后续处理链
+                        batch_result = await self._process_single_batch(
+                            task_id, tts_batch, batch_counter, current_audio_time_ms,
+                            video_file_path, path_manager, duration_aligner, timestamp_adjuster, 
+                            media_mixer, hls_manager
+                        )
+                        
+                        batch_duration = time.time() - batch_start_time
+                        
+                        if batch_result:
+                            added_hls_segments += 1
+                            processed_segment_paths.append(batch_result["segment_path"])
+                            current_audio_time_ms = batch_result["new_time_ms"]
+                            self.logger.info(
+                                f"[{task_id}] 处理消费者成功完成批次 {batch_counter}，"
+                                f"耗时: {batch_duration:.2f}s，总段数: {added_hls_segments}"
+                            )
+                        else:
+                            failed_batches += 1
+                            self.logger.warning(
+                                f"[{task_id}] 处理消费者批次 {batch_counter} 处理失败，"
+                                f"失败批次数: {failed_batches}"
+                            )
+                    
+                    # 清理内存
+                    self._clean_memory()
+                    
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"[{task_id}] 处理消费者等待队列超时，检查生产者状态")
+                    # 继续等待
+                    continue
+                except Exception as e:
+                    failed_batches += 1
+                    self.logger.error(f"[{task_id}] 处理消费者处理批次异常: {e}", exc_info=True)
+                    # 继续处理下一个批次
+                    continue
+            
+            # 计算性能指标
+            total_duration = time.time() - start_time
+            success_rate = ((added_hls_segments) / (added_hls_segments + failed_batches) * 100) if (added_hls_segments + failed_batches) > 0 else 0
+            
+            self.logger.info(
+                f"[{task_id}] 处理消费者完成 - "
+                f"成功段数: {added_hls_segments}, 失败批次: {failed_batches}, "
+                f"成功率: {success_rate:.1f}%, 总耗时: {total_duration:.2f}s"
+            )
+            
+            return True, processed_segment_paths, added_hls_segments
+            
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 处理消费者严重异常: {e}", exc_info=True)
+            return False, processed_segment_paths, added_hls_segments
