@@ -58,3 +58,10 @@ temp/
 .ipynb_checkpoints/
 测试结果/
 .cursor/rules/two_pipeline_refactor.mdc
+
+# 分析和调试文件
+*analysis*.py
+*analysis*.md
+*report*.md
+app.log
+*.log

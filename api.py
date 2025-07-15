@@ -1,11 +1,9 @@
-import sys
 import logging
 import asyncio
-from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Body, Depends
+from fastapi import FastAPI, HTTPException, Body, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 

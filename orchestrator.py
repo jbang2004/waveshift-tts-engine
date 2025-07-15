@@ -150,10 +150,6 @@ class MainOrchestrator:
                 path_manager.cleanup()
             self._clean_memory()
     
-    async def _update_task_status_legacy(self, task_id: str, status: str, error_message: str = None):
-        """统一的任务状态更新 - 旧版本，使用新的安全方法"""
-        self._create_status_update_task(task_id, status, error_message)
-    
     def _clean_memory(self):
         """清理内存和GPU缓存 - 与原版保持一致"""
         gc.collect()
@@ -196,7 +192,7 @@ class MainOrchestrator:
                 raise ValueError("data_fetcher服务未找到")
             
             # 使用并行化版本，大幅提升数据获取性能
-            task_data = await data_fetcher.fetch_task_data_parallel(task_id, path_manager)
+            task_data = await data_fetcher.fetch_task_data(task_id, path_manager)
             
             if task_data.get("status") != "success":
                 raise ValueError(f"获取任务数据失败: {task_data.get('message', 'Unknown error')}")

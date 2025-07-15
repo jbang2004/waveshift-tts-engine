@@ -4,10 +4,11 @@
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 from dotenv import load_dotenv
 import logging.config
 import logging
+from constants import AudioConstants, TimeConstants, BatchConstants
 
 # 加载环境变量
 current_dir = Path(__file__).parent
@@ -85,10 +86,10 @@ class CloudflareConfig:
 @dataclass
 class AudioConfig:
     """音频处理配置"""
-    batch_size: int = field(default_factory=lambda: int(os.getenv("BATCH_SIZE", "6")))
+    batch_size: int = field(default_factory=lambda: int(os.getenv("BATCH_SIZE", str(BatchConstants.DEFAULT_BATCH_SIZE))))
     target_speaker_audio_duration: int = field(default_factory=lambda: int(os.getenv("TARGET_SPEAKER_AUDIO_DURATION", "10")))
     vad_sr: int = field(default_factory=lambda: int(os.getenv("VAD_SR", "16000")))
-    target_sr: int = field(default_factory=lambda: int(os.getenv("TARGET_SR", "24000")))
+    target_sr: int = field(default_factory=lambda: int(os.getenv("TARGET_SR", str(AudioConstants.SAMPLE_RATE))))
     vocals_volume: float = field(default_factory=lambda: float(os.getenv("VOCALS_VOLUME", "0.7")))
     background_volume: float = field(default_factory=lambda: float(os.getenv("BACKGROUND_VOLUME", "0.3")))
     audio_overlap: int = field(default_factory=lambda: int(os.getenv("AUDIO_OVERLAP", "1024")))
@@ -148,7 +149,6 @@ class HLSConfig:
 class TranslationConfig:
     """翻译配置"""
     model: str = field(default_factory=lambda: os.getenv("TRANSLATION_MODEL", "deepseek"))
-    zhipuai_api_key: str = field(default_factory=lambda: os.getenv("ZHIPUAI_API_KEY", ""))
     gemini_api_key: str = field(default_factory=lambda: os.getenv("GEMINI_API_KEY", ""))
     deepseek_api_key: str = field(default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", ""))
     xai_api_key: str = field(default_factory=lambda: os.getenv("XAI_API_KEY", ""))

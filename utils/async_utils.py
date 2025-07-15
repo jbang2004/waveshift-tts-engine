@@ -175,21 +175,3 @@ async def run_with_timeout(
         raise asyncio.TimeoutError(msg)
 
 
-class AsyncContextManager:
-    """异步上下文管理器基类 - 确保资源正确清理"""
-    
-    async def __aenter__(self):
-        await self.startup()
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.cleanup()
-        return False
-    
-    async def startup(self):
-        """初始化资源"""
-        pass
-    
-    async def cleanup(self):
-        """清理资源"""
-        pass
