@@ -18,7 +18,7 @@ from core.cloudflare.r2_hls_storage_manager import R2HLSStorageManager
 logger = logging.getLogger(__name__)
 
 class HLSManager:
-    """HLS流媒体管理器 - 支持多任务管理"""
+    """HLS流媒体管理器 - 支持多任务管理和并行上传优化"""
     def __init__(self, d1_client: D1Client = None):
         self.config = Config()
         
@@ -42,7 +42,12 @@ class HLSManager:
         # 并发锁，每个任务一个锁
         self.locks = {}
         
-        self.logger.info("HLS管理器已初始化")
+        # 并行上传优化
+        self.upload_queues = {}  # 每个任务的上传队列
+        self.upload_workers = {}  # 每个任务的上传工作器
+        self.upload_semaphore = asyncio.Semaphore(3)  # 限制并发上传数
+        
+        self.logger.info("HLS管理器已初始化（支持并行上传优化）")
 
     async def create_manager(self, task_id: str, path_manager: PathManager) -> Dict:
         """
@@ -112,6 +117,9 @@ class HLSManager:
                     "created_at": time.time()
                 }
                 
+                # 初始化并行上传支持
+                await self._init_parallel_upload(task_id)
+                
                 # 保存初始播放列表
                 await self._save_playlist(task_id)
                 
@@ -132,6 +140,297 @@ class HLSManager:
                 if task_id in self.locks:
                     del self.locks[task_id]
                 return {"status": "error", "message": f"创建HLS管理器失败: {str(e)}"}
+
+    async def _init_parallel_upload(self, task_id: str) -> None:
+        """
+        初始化任务的并行上传支持
+        
+        Args:
+            task_id: 任务ID
+        """
+        try:
+            # 创建上传队列
+            self.upload_queues[task_id] = asyncio.Queue(maxsize=10)
+            
+            # 启动上传工作器
+            self.upload_workers[task_id] = asyncio.create_task(
+                self._upload_worker(task_id),
+                name=f"hls_upload_worker_{task_id}"
+            )
+            
+            self.logger.info(f"[{task_id}] 并行上传支持已初始化")
+            
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 初始化并行上传失败: {e}")
+            # 不抛出异常，降级到串行模式
+    
+    async def _upload_worker(self, task_id: str) -> None:
+        """
+        并行上传工作器 - 后台处理上传任务
+        
+        Args:
+            task_id: 任务ID
+        """
+        self.logger.info(f"[{task_id}] 上传工作器启动")
+        
+        upload_count = 0
+        failed_count = 0
+        
+        try:
+            while True:
+                try:
+                    # 从队列获取上传任务（设置超时避免无限等待）
+                    upload_item = await asyncio.wait_for(
+                        self.upload_queues[task_id].get(), timeout=30.0
+                    )
+                    
+                    # 检查停止信号
+                    if upload_item is None:
+                        self.logger.info(f"[{task_id}] 上传工作器收到停止信号")
+                        break
+                    
+                    # 处理上传任务
+                    async with self.upload_semaphore:
+                        success = await self._process_upload_item(task_id, upload_item)
+                        
+                        if success:
+                            upload_count += 1
+                            self.logger.debug(f"[{task_id}] 上传任务完成: {upload_item['type']}")
+                        else:
+                            failed_count += 1
+                            self.logger.warning(f"[{task_id}] 上传任务失败: {upload_item['type']}")
+                    
+                    # 标记队列任务完成
+                    self.upload_queues[task_id].task_done()
+                    
+                except asyncio.TimeoutError:
+                    # 队列空闲超时，继续等待
+                    self.logger.debug(f"[{task_id}] 上传工作器空闲等待")
+                    continue
+                    
+                except Exception as e:
+                    failed_count += 1
+                    self.logger.error(f"[{task_id}] 上传工作器处理异常: {e}")
+                    continue
+        
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 上传工作器严重异常: {e}")
+        finally:
+            self.logger.info(
+                f"[{task_id}] 上传工作器关闭 - "
+                f"成功: {upload_count}, 失败: {failed_count}"
+            )
+    
+    async def _process_upload_item(self, task_id: str, upload_item: Dict) -> bool:
+        """
+        处理单个上传任务
+        
+        Args:
+            task_id: 任务ID
+            upload_item: 上传任务项
+            
+        Returns:
+            bool: 上传是否成功
+        """
+        try:
+            upload_type = upload_item['type']
+            start_time = time.time()
+            
+            if upload_type == 'segments':
+                # 上传段文件
+                segment_files = upload_item['files']
+                upload_result = await self.hls_storage_manager.batch_upload_segments(
+                    task_id, segment_files
+                )
+                
+                success = upload_result.get("status") in ["success", "partial"]
+                if success:
+                    uploaded_count = upload_result.get('uploaded_count', 0)
+                    self.logger.info(
+                        f"[{task_id}] 段文件批量上传完成: {uploaded_count}/{len(segment_files)}, "
+                        f"耗时: {time.time() - start_time:.2f}s"
+                    )
+                else:
+                    self.logger.warning(f"[{task_id}] 段文件上传失败: {upload_result.get('message')}")
+                
+                return success
+                
+            elif upload_type == 'playlist':
+                # 上传播放列表
+                await self._upload_playlist_to_storage(task_id)
+                self.logger.info(
+                    f"[{task_id}] 播放列表上传完成, "
+                    f"耗时: {time.time() - start_time:.2f}s"
+                )
+                return True
+                
+            else:
+                self.logger.warning(f"[{task_id}] 未知的上传任务类型: {upload_type}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 处理上传任务异常: {e}")
+            return False
+    
+    async def _queue_segment_upload(self, task_id: str, segment_files: List[str]) -> None:
+        """
+        将段文件上传任务加入队列
+        
+        Args:
+            task_id: 任务ID
+            segment_files: 段文件路径列表
+        """
+        try:
+            if task_id in self.upload_queues:
+                upload_item = {
+                    'type': 'segments',
+                    'files': segment_files,
+                    'timestamp': time.time()
+                }
+                
+                # 非阻塞方式加入队列
+                try:
+                    self.upload_queues[task_id].put_nowait(upload_item)
+                    self.logger.debug(
+                        f"[{task_id}] 段文件上传任务已入队: {len(segment_files)} 个文件, "
+                        f"队列大小: {self.upload_queues[task_id].qsize()}"
+                    )
+                except asyncio.QueueFull:
+                    # 队列满时降级到同步上传
+                    self.logger.warning(f"[{task_id}] 上传队列已满，降级到同步上传")
+                    await self._fallback_sync_upload_segments(task_id, segment_files)
+            else:
+                # 没有队列时降级到同步上传
+                await self._fallback_sync_upload_segments(task_id, segment_files)
+                
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 队列段文件上传失败: {e}")
+            # 降级到同步上传
+            await self._fallback_sync_upload_segments(task_id, segment_files)
+    
+    async def _queue_playlist_upload(self, task_id: str) -> None:
+        """
+        将播放列表上传任务加入队列
+        
+        Args:
+            task_id: 任务ID
+        """
+        try:
+            if task_id in self.upload_queues:
+                upload_item = {
+                    'type': 'playlist',
+                    'timestamp': time.time()
+                }
+                
+                # 非阻塞方式加入队列
+                try:
+                    self.upload_queues[task_id].put_nowait(upload_item)
+                    self.logger.debug(
+                        f"[{task_id}] 播放列表上传任务已入队, "
+                        f"队列大小: {self.upload_queues[task_id].qsize()}"
+                    )
+                except asyncio.QueueFull:
+                    # 队列满时降级到同步上传
+                    self.logger.warning(f"[{task_id}] 上传队列已满，降级到同步播放列表上传")
+                    await self._upload_playlist_to_storage(task_id)
+            else:
+                # 没有队列时降级到同步上传
+                await self._upload_playlist_to_storage(task_id)
+                
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 队列播放列表上传失败: {e}")
+            # 降级到同步上传
+            await self._upload_playlist_to_storage(task_id)
+    
+    async def _fallback_sync_upload_segments(self, task_id: str, segment_files: List[str]) -> None:
+        """
+        降级的同步段文件上传
+        
+        Args:
+            task_id: 任务ID
+            segment_files: 段文件路径列表
+        """
+        try:
+            upload_result = await self.hls_storage_manager.batch_upload_segments(task_id, segment_files)
+            if upload_result["status"] in ["success", "partial"]:
+                self.logger.info(f"[{task_id}] 同步段文件上传完成: {upload_result['uploaded_count']}/{len(segment_files)}")
+            else:
+                self.logger.warning(f"[{task_id}] 同步段文件上传失败")
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 同步段文件上传异常: {e}")
+    
+    async def _wait_for_uploads_completion(self, task_id: str, timeout: float = 60.0) -> None:
+        """
+        等待任务的所有并行上传完成
+        
+        Args:
+            task_id: 任务ID
+            timeout: 超时时间（秒）
+        """
+        try:
+            if task_id not in self.upload_queues or task_id not in self.upload_workers:
+                self.logger.info(f"[{task_id}] 没有并行上传队列，无需等待")
+                return
+            
+            self.logger.info(f"[{task_id}] 等待所有上传任务完成...")
+            start_time = time.time()
+            
+            # 等待队列中的所有任务完成
+            try:
+                await asyncio.wait_for(
+                    self.upload_queues[task_id].join(), timeout=timeout
+                )
+                wait_duration = time.time() - start_time
+                self.logger.info(f"[{task_id}] 上传队列任务全部完成，耗时: {wait_duration:.2f}s")
+                
+            except asyncio.TimeoutError:
+                queue_size = self.upload_queues[task_id].qsize()
+                self.logger.warning(
+                    f"[{task_id}] 等待上传完成超时，剩余任务: {queue_size}, "
+                    f"超时时间: {timeout}s"
+                )
+            
+            # 停止上传工作器
+            await self._stop_upload_worker(task_id)
+            
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 等待上传完成异常: {e}")
+    
+    async def _stop_upload_worker(self, task_id: str) -> None:
+        """
+        停止任务的上传工作器
+        
+        Args:
+            task_id: 任务ID
+        """
+        try:
+            if task_id in self.upload_queues:
+                # 发送停止信号
+                await self.upload_queues[task_id].put(None)
+                self.logger.debug(f"[{task_id}] 上传工作器停止信号已发送")
+            
+            if task_id in self.upload_workers:
+                worker = self.upload_workers[task_id]
+                try:
+                    await asyncio.wait_for(worker, timeout=5.0)
+                    self.logger.info(f"[{task_id}] 上传工作器已正常关闭")
+                except asyncio.TimeoutError:
+                    worker.cancel()
+                    self.logger.warning(f"[{task_id}] 上传工作器强制取消")
+                except Exception as e:
+                    self.logger.error(f"[{task_id}] 上传工作器关闭异常: {e}")
+                
+                # 清理工作器引用
+                del self.upload_workers[task_id]
+            
+            # 清理队列引用
+            if task_id in self.upload_queues:
+                del self.upload_queues[task_id]
+                
+            self.logger.info(f"[{task_id}] 并行上传资源已清理")
+            
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 停止上传工作器异常: {e}")
 
     async def _save_playlist(self, task_id: str) -> None:
         """
@@ -273,13 +572,9 @@ class HLSManager:
                     segment.uri = Path(segment.uri).name
                     playlist.segments.append(segment)
 
-                # 上传新分段文件到R2存储（如果启用）
+                # 使用并行上传队列（如果启用且可用）
                 if self.config.ENABLE_HLS_STORAGE and new_segment_files:
-                    upload_result = await self.hls_storage_manager.batch_upload_segments(task_id, new_segment_files)
-                    if upload_result["status"] in ["success", "partial"]:
-                        self.logger.info(f"[{task_id}] 分段文件上传完成: {upload_result['uploaded_count']}/{len(new_segment_files)}")
-                    else:
-                        self.logger.warning(f"[{task_id}] 分段文件上传失败")
+                    await self._queue_segment_upload(task_id, new_segment_files)
 
                 # 更新序列号
                 manager["sequence_number"] += len(temp_m3u8.segments)
@@ -291,9 +586,9 @@ class HLSManager:
                 # 保存本地播放列表
                 await self._save_playlist(task_id)
                 
-                # 上传更新后的播放列表到Storage（如果启用）
+                # 使用并行上传队列上传播放列表（如果启用）
                 if self.config.ENABLE_HLS_STORAGE:
-                    await self._upload_playlist_to_storage(task_id)
+                    await self._queue_playlist_upload(task_id)
 
                 # HLS播放列表URL现在在_upload_playlist_to_storage方法中更新为Storage URL
                 
@@ -405,7 +700,11 @@ class HLSManager:
 
         # 1. 结束HLS播放列表
         await self.finalize_playlist(task_id)
-        self.logger.info(f"[{task_id}] HLSManager: 播放列表已标记为结束并上传到Storage。")
+        self.logger.info(f"[{task_id}] HLSManager: 播放列表已标记为结束。")
+        
+        # 等待所有并行上传完成
+        await self._wait_for_uploads_completion(task_id)
+        self.logger.info(f"[{task_id}] HLSManager: 所有并行上传已完成。")
 
         # 2. 合并处理好的视频片段
         self.logger.info(f"[{task_id}] HLSManager: 开始合并 {len(all_processed_segment_paths)} 个视频片段。")

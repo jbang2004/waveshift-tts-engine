@@ -189,13 +189,14 @@ class MainOrchestrator:
             return {"status": "error", "message": f"获取任务状态失败: {e}"}
     
     async def _fetch_task_data(self, task_id: str, path_manager: PathManager) -> Dict:
-        """获取任务数据 - 替代FetchDataStep"""
+        """获取任务数据 - 使用并行化优化版本"""
         try:
             data_fetcher = self.services.get('data_fetcher')
             if not data_fetcher:
                 raise ValueError("data_fetcher服务未找到")
             
-            task_data = await data_fetcher.fetch_task_data(task_id, path_manager)
+            # 使用并行化版本，大幅提升数据获取性能
+            task_data = await data_fetcher.fetch_task_data_parallel(task_id, path_manager)
             
             if task_data.get("status") != "success":
                 raise ValueError(f"获取任务数据失败: {task_data.get('message', 'Unknown error')}")
@@ -212,13 +213,24 @@ class MainOrchestrator:
             if not audio_file_path:
                 raise ValueError("没有找到音频文件")
             
+            # 记录性能提升信息
+            if task_data.get("performance"):
+                perf = task_data["performance"]
+                self.logger.info(
+                    f"[{task_id}] 并行数据获取性能报告: "
+                    f"总耗时: {perf.get('total_duration', 0):.2f}s, "
+                    f"D1查询: {perf.get('d1_duration', 0):.2f}s, "
+                    f"下载处理: {perf.get('download_duration', 0):.2f}s, "
+                    f"效率提升: {perf.get('efficiency_gain', 'N/A')}"
+                )
+            
             # 如果有分离音频信息，记录到日志
             if vocals_file_path and instrumental_file_path:
                 self.logger.info(f"[{task_id}] 音频分离成功: vocals={vocals_file_path}, instrumental={instrumental_file_path}")
             elif vocals_file_path:
                 self.logger.info(f"[{task_id}] 使用原始音频作为人声: {vocals_file_path}")
             
-            self.logger.info(f"[{task_id}] 获取到 {len(sentences)} 个句子和音频文件")
+            self.logger.info(f"[{task_id}] 并行获取到 {len(sentences)} 个句子和音频文件")
             return {
                 "sentences": sentences,
                 "audio_file_path": audio_file_path,  # 兼容性：返回人声路径
