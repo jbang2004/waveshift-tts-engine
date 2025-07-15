@@ -33,6 +33,8 @@ class MediaMixer:
         
         # 音频缓冲区设置
         self.full_audio_buffer = np.array([], dtype=np.float32)
+        # 滑动窗口优化：固定最大缓冲区大小
+        self.max_buffer_samples = int(10.0 * self.sample_rate)  # 最多保留10秒音频
         
         # 内存管理配置
         self.max_buffer_duration = getattr(self.config, 'MAX_BUFFER_DURATION', 10.0)  # 最大缓冲时长（秒）
@@ -168,7 +170,8 @@ class MediaMixer:
             max_val=max_val,
             full_audio_buffer=self.full_audio_buffer,
             task_id=task_id,
-            target_language=target_language
+            target_language=target_language,
+            max_buffer_samples=self.max_buffer_samples  # 传递滑动窗口参数
         )
         
         if not success:
@@ -178,17 +181,13 @@ class MediaMixer:
         # 更新缓冲区
         self.full_audio_buffer = updated_buffer
         
-        # 检查是否需要清理缓冲区
-        if self._should_cleanup_buffer():
-            self._cleanup_buffer()
-            
         logger.info(f"[{task_id}] 批次 {batch_counter} 处理完成")
         
         # 清理临时变量
         if 'updated_buffer' in locals() and updated_buffer is not self.full_audio_buffer:
             del updated_buffer
         
-        # 定期强制垃圾回收
+        # 定期强制垃圾回收（保留这个机制以提高内存效率）
         if batch_counter % self.cleanup_interval == 0:
             gc.collect()
             
@@ -221,7 +220,8 @@ async def create_mixed_segment(
     max_val: float,
     full_audio_buffer: np.ndarray,
     task_id: str,
-    target_language: str
+    target_language: str,
+    max_buffer_samples: int
 ) -> Tuple[bool, np.ndarray]:
     """
     将一批句子的合成音频与原视频片段混合，并可生成带字幕的视频。
@@ -277,6 +277,10 @@ async def create_mixed_segment(
             # Potentially set to a default or handle error, for now, it will pass -1
 
         updated_audio_buffer = np.concatenate((full_audio_buffer, full_audio))
+        
+        # 滑动窗口优化：只保留最后N秒的音频
+        if len(updated_audio_buffer) > max_buffer_samples:
+            updated_audio_buffer = updated_audio_buffer[-max_buffer_samples:]
 
         await add_video_segment(
             video_path=video_path,
@@ -291,10 +295,6 @@ async def create_mixed_segment(
             video_width=video_width,      # Pass video_width
             video_height=video_height    # Pass video_height
         )
-        
-        if len(updated_audio_buffer) > sample_rate * 5:
-            preserve_samples = min(len(updated_audio_buffer), int(sample_rate * 5))
-            updated_audio_buffer = updated_audio_buffer[-preserve_samples:]
         
         return True, updated_audio_buffer
         

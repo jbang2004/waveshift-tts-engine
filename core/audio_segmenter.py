@@ -2,7 +2,7 @@ import re
 import logging
 import asyncio
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 
 try:
     from pydub import AudioSegment
@@ -210,12 +210,12 @@ class AudioSegmenter:
     
     async def _extract_and_save_audio_clips(self, audio_path: str, clips_library: Dict, 
                                           output_dir: str) -> Dict[str, str]:
-        """根据切片计划提取并保存音频片段（基于padding过渡）"""
+        """并行版本的音频切片提取"""
         # 创建输出目录
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
-        # 加载音频文件
+        # 异步加载音频文件
         self.logger.info(f"🎵 加载音频文件: {audio_path}")
         try:
             audio = await asyncio.to_thread(AudioSegment.from_file, audio_path)
@@ -223,61 +223,75 @@ class AudioSegmenter:
             self.logger.error(f"❌ 加载音频文件失败: {e}")
             return {}
         
-        clip_files = {}
-        
-        for clip_id, clip_info in clips_library.items():
-            padding_ms = clip_info['padding_ms']
-            self.logger.info(f"🎬 处理 {clip_id}: {clip_info['speaker']} ({clip_info['total_duration_ms']/1000:.1f}秒) [padding: {padding_ms}ms]")
-            
-            # 合并所有片段，使用padding进行平滑过渡
-            combined_audio = AudioSegment.empty()
-            segments_to_process = clip_info['segments_to_concatenate']
-            
-            for i, (start_ms, end_ms) in enumerate(segments_to_process):
-                # 边界检查
-                if start_ms < 0:
-                    start_ms = 0
-                if end_ms > len(audio):
-                    end_ms = len(audio)
-                if start_ms >= end_ms:
-                    continue
-                    
-                segment = audio[start_ms:end_ms]
+        # 并行处理所有切片
+        async def process_single_clip(clip_id: str, clip_info: Dict) -> Tuple[str, Optional[str]]:
+            """处理单个音频切片"""
+            try:
+                padding_ms = clip_info['padding_ms']
+                self.logger.info(f"🎬 处理 {clip_id}: {clip_info['speaker']} ({clip_info['total_duration_ms']/1000:.1f}秒) [padding: {padding_ms}ms]")
                 
-                # 使用padding实现平滑过渡
-                if len(segment) > padding_ms * 2:
-                    # 为了避免突然的开始和结束，在padding区域应用淡入淡出
-                    fade_duration = min(padding_ms // 2, 100)  # 淡入淡出时长
-                    
-                    if i == 0:
-                        # 第一个segment：在开头应用淡入
-                        segment = segment.fade_in(fade_duration)
-                    
-                    if i == len(segments_to_process) - 1:
-                        # 最后一个segment：在结尾应用淡出
-                        segment = segment.fade_out(fade_duration)
-                    else:
-                        # 中间的segments：两端都进行轻微的淡入淡出以确保平滑
-                        segment = segment.fade_in(fade_duration // 2).fade_out(fade_duration // 2)
+                # 合并所有片段，使用padding进行平滑过渡
+                combined_audio = AudioSegment.empty()
+                segments_to_process = clip_info['segments_to_concatenate']
                 
-                combined_audio += segment
-            
-            if len(combined_audio) == 0:
-                self.logger.warning(f"   ⚠️ {clip_id} 片段为空，跳过")
-                continue
-            
-            # 保存音频片段
-            speaker_name = clip_info['speaker'].replace(' ', '_').replace('/', '_')
-            clip_filename = f"{clip_id}_{speaker_name}.wav"
-            clip_filepath = output_path / clip_filename
-            
-            # 添加最终的音频标准化
-            combined_audio = combined_audio.normalize()
-            await asyncio.to_thread(combined_audio.export, str(clip_filepath), format="wav")
-            
-            clip_files[clip_id] = str(clip_filepath)
-            self.logger.info(f"   ✅ 已保存: {clip_filepath}")
+                for i, (start_ms, end_ms) in enumerate(segments_to_process):
+                    # 边界检查
+                    if start_ms < 0:
+                        start_ms = 0
+                    if end_ms > len(audio):
+                        end_ms = len(audio)
+                    if start_ms >= end_ms:
+                        continue
+                        
+                    segment = audio[start_ms:end_ms]
+                    
+                    # 使用padding实现平滑过渡
+                    if len(segment) > padding_ms * 2:
+                        # 为了避免突然的开始和结束，在padding区域应用淡入淡出
+                        fade_duration = min(padding_ms // 2, 100)  # 淡入淡出时长
+                        
+                        if i == 0:
+                            # 第一个segment：在开头应用淡入
+                            segment = segment.fade_in(fade_duration)
+                        
+                        if i == len(segments_to_process) - 1:
+                            # 最后一个segment：在结尾应用淡出
+                            segment = segment.fade_out(fade_duration)
+                        else:
+                            # 中间的segments：两端都进行轻微的淡入淡出以确保平滑
+                            segment = segment.fade_in(fade_duration // 2).fade_out(fade_duration // 2)
+                    
+                    combined_audio += segment
+                
+                if len(combined_audio) == 0:
+                    self.logger.warning(f"   ⚠️ {clip_id} 片段为空，跳过")
+                    return clip_id, None
+                
+                # 保存音频片段
+                speaker_name = clip_info['speaker'].replace(' ', '_').replace('/', '_')
+                clip_filename = f"{clip_id}_{speaker_name}.wav"
+                clip_filepath = output_path / clip_filename
+                
+                # 添加最终的音频标准化并异步保存
+                combined_audio = combined_audio.normalize()
+                await asyncio.to_thread(combined_audio.export, str(clip_filepath), format="wav")
+                
+                self.logger.info(f"   ✅ 已保存: {clip_filepath}")
+                return clip_id, str(clip_filepath)
+                
+            except Exception as e:
+                self.logger.error(f"处理切片 {clip_id} 失败: {e}")
+                return clip_id, None
         
+        # 并行执行所有切片处理
+        self.logger.info(f"🚀 开始并行处理 {len(clips_library)} 个音频切片")
+        tasks = [process_single_clip(clip_id, clip_info) for clip_id, clip_info in clips_library.items()]
+        results = await asyncio.gather(*tasks)
+        
+        # 收集成功的结果
+        clip_files = {clip_id: filepath for clip_id, filepath in results if filepath}
+        
+        self.logger.info(f"✅ 并行处理完成，成功生成 {len(clip_files)} 个音频切片")
         return clip_files
     
     def _map_clips_to_sentences(self, sentences: List[Sentence], clips_library: Dict, 
