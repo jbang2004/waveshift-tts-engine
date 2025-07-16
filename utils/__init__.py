@@ -1,1 +1,1 @@
-# WaveShift TTS Engine Utils Package
+# Utility functions for WaveShift TTS Engine

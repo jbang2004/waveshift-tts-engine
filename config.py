@@ -8,7 +8,6 @@ from typing import Dict, Any
 from dotenv import load_dotenv
 import logging.config
 import logging
-from constants import AudioConstants, TimeConstants, BatchConstants
 
 # 加载环境变量
 current_dir = Path(__file__).parent
@@ -84,20 +83,21 @@ class CloudflareConfig:
 
 
 @dataclass
-class AudioConfig:
-    """音频处理配置"""
-    batch_size: int = field(default_factory=lambda: int(os.getenv("BATCH_SIZE", str(BatchConstants.DEFAULT_BATCH_SIZE))))
+class AudioProcessingConfig:
+    """音频处理配置（合并了AudioConfig和AudioSlicingConfig）"""
+    # 基础音频配置
+    batch_size: int = field(default_factory=lambda: int(os.getenv("BATCH_SIZE", "20")))
     target_speaker_audio_duration: int = field(default_factory=lambda: int(os.getenv("TARGET_SPEAKER_AUDIO_DURATION", "10")))
     vad_sr: int = field(default_factory=lambda: int(os.getenv("VAD_SR", "16000")))
-    target_sr: int = field(default_factory=lambda: int(os.getenv("TARGET_SR", str(AudioConstants.SAMPLE_RATE))))
+    target_sr: int = field(default_factory=lambda: int(os.getenv("TARGET_SR", "24000")))
     vocals_volume: float = field(default_factory=lambda: float(os.getenv("VOCALS_VOLUME", "0.7")))
     background_volume: float = field(default_factory=lambda: float(os.getenv("BACKGROUND_VOLUME", "0.3")))
     audio_overlap: int = field(default_factory=lambda: int(os.getenv("AUDIO_OVERLAP", "1024")))
     silence_fade_ms: int = field(default_factory=lambda: int(os.getenv("SILENCE_FADE_MS", "25")))
     normalization_threshold: float = field(default_factory=lambda: float(os.getenv("NORMALIZATION_THRESHOLD", "0.9")))
-    # 是否保存TTS生成的音频
+    
+    # 文件管理
     save_tts_audio: bool = field(default_factory=lambda: os.getenv("SAVE_TTS_AUDIO", "true").lower() == "true")
-    # 是否清理临时文件（默认False，保留临时文件）
     cleanup_temp_files: bool = field(default_factory=lambda: os.getenv("CLEANUP_TEMP_FILES", "false").lower() == "true")
     
     # 音频分离配置
@@ -106,6 +106,12 @@ class AudioConfig:
     vocal_separation_output_format: str = field(default_factory=lambda: os.getenv("VOCAL_SEPARATION_OUTPUT_FORMAT", "WAV"))
     vocal_separation_sample_rate: int = field(default_factory=lambda: int(os.getenv("VOCAL_SEPARATION_SAMPLE_RATE", "24000")))
     vocal_separation_timeout: int = field(default_factory=lambda: int(os.getenv("VOCAL_SEPARATION_TIMEOUT", "300")))
+    
+    # 音频切片配置
+    clip_goal_duration_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_GOAL_DURATION_MS", "12000")))
+    clip_min_duration_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_MIN_DURATION_MS", "1000")))
+    clip_padding_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_PADDING_MS", "200")))
+    clip_allow_cross_non_speech: bool = field(default_factory=lambda: os.getenv("AUDIO_CLIP_ALLOW_CROSS_NON_SPEECH", "false").lower() == "true")
     
     def __post_init__(self):
         """验证音频配置"""
@@ -124,15 +130,6 @@ class AudioConfig:
         if not (0.0 <= self.background_volume <= 1.0):
             logger.warning("BACKGROUND_VOLUME 必须在0.0-1.0范围内，使用默认值0.3")
             self.background_volume = 0.3
-
-
-@dataclass
-class AudioSlicingConfig:
-    """音频切片配置"""
-    clip_goal_duration_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_GOAL_DURATION_MS", "12000")))
-    clip_min_duration_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_MIN_DURATION_MS", "1000")))
-    clip_padding_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_PADDING_MS", "200")))
-    clip_allow_cross_non_speech: bool = field(default_factory=lambda: os.getenv("AUDIO_CLIP_ALLOW_CROSS_NON_SPEECH", "false").lower() == "true")
 
 
 @dataclass
@@ -184,16 +181,14 @@ class TranslationConfig:
 
 
 @dataclass
-class ProcessingConfig:
-    """处理参数配置"""
+class RuntimeConfig:
+    """运行时配置（合并了ProcessingConfig和ResourceConfig）"""
+    # 处理参数配置
     simplification_batch_size: int = field(default_factory=lambda: int(os.getenv("SIMPLIFICATION_BATCH_SIZE", "50")))
     tts_batch_size: int = field(default_factory=lambda: int(os.getenv("TTS_BATCH_SIZE", "3")))
     max_parallel_segments: int = field(default_factory=lambda: int(os.getenv("MAX_PARALLEL_SEGMENTS", "2")))
-
-
-@dataclass
-class ResourceConfig:
-    """资源配置"""
+    
+    # 资源配置
     simplifier_actor_num_cpus: float = field(default_factory=lambda: float(os.getenv("SIMPLIFIER_ACTOR_NUM_CPUS", "0.5")))
     media_mixer_actor_num_cpus: float = field(default_factory=lambda: float(os.getenv("MEDIA_MIXER_ACTOR_NUM_CPUS", "0.5")))
 
@@ -212,12 +207,10 @@ class AppConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     paths: PathConfig = field(default_factory=PathConfig)
     cloudflare: CloudflareConfig = field(default_factory=CloudflareConfig)
-    audio: AudioConfig = field(default_factory=AudioConfig)
-    audio_slicing: AudioSlicingConfig = field(default_factory=AudioSlicingConfig)
+    audio: AudioProcessingConfig = field(default_factory=AudioProcessingConfig)
     hls: HLSConfig = field(default_factory=HLSConfig)
     translation: TranslationConfig = field(default_factory=TranslationConfig)
-    processing: ProcessingConfig = field(default_factory=ProcessingConfig)
-    resource: ResourceConfig = field(default_factory=ResourceConfig)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     
     def __post_init__(self):
@@ -276,10 +269,12 @@ class AppConfig:
             'XAI_API_KEY': self.translation.xai_api_key,
             'GROQ_API_KEY': self.translation.groq_api_key,
             
-            # 处理配置
-            'TTS_BATCH_SIZE': self.processing.tts_batch_size,
-            'SIMPLIFICATION_BATCH_SIZE': self.processing.simplification_batch_size,
-            'MAX_PARALLEL_SEGMENTS': self.processing.max_parallel_segments,
+            # 运行时配置
+            'TTS_BATCH_SIZE': self.runtime.tts_batch_size,
+            'SIMPLIFICATION_BATCH_SIZE': self.runtime.simplification_batch_size,
+            'MAX_PARALLEL_SEGMENTS': self.runtime.max_parallel_segments,
+            'SIMPLIFIER_ACTOR_NUM_CPUS': self.runtime.simplifier_actor_num_cpus,
+            'MEDIA_MIXER_ACTOR_NUM_CPUS': self.runtime.media_mixer_actor_num_cpus,
             
             # 内存配置
             'MAX_BUFFER_DURATION': self.memory.max_buffer_duration,
@@ -287,10 +282,10 @@ class AppConfig:
             'CLEANUP_INTERVAL': self.memory.cleanup_interval,
             
             # 音频切片配置
-            'AUDIO_CLIP_GOAL_DURATION_MS': self.audio_slicing.clip_goal_duration_ms,
-            'AUDIO_CLIP_MIN_DURATION_MS': self.audio_slicing.clip_min_duration_ms,
-            'AUDIO_CLIP_PADDING_MS': self.audio_slicing.clip_padding_ms,
-            'AUDIO_CLIP_ALLOW_CROSS_NON_SPEECH': self.audio_slicing.clip_allow_cross_non_speech,
+            'AUDIO_CLIP_GOAL_DURATION_MS': self.audio.clip_goal_duration_ms,
+            'AUDIO_CLIP_MIN_DURATION_MS': self.audio.clip_min_duration_ms,
+            'AUDIO_CLIP_PADDING_MS': self.audio.clip_padding_ms,
+            'AUDIO_CLIP_ALLOW_CROSS_NON_SPEECH': self.audio.clip_allow_cross_non_speech,
             
             # HLS配置
             'ENABLE_HLS_STORAGE': self.hls.enable_storage,
@@ -314,9 +309,15 @@ class ConfigManager:
     
     def __getattr__(self, name: str) -> Any:
         """提供向后兼容的属性访问"""
+        # 首先检查是否是直接的配置属性
+        if hasattr(self.config, name):
+            return getattr(self.config, name)
+        
+        # 然后检查字典格式的属性
         config_dict = self.config.to_dict()
         if name in config_dict:
             return config_dict[name]
+        
         raise AttributeError(f"'{self.__class__.__name__}' object has no attribute '{name}'")
 
 

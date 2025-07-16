@@ -13,7 +13,6 @@ except ImportError:
 from config import get_config
 from core.sentence_tools import Sentence
 from utils.path_manager import PathManager
-from utils.error_handling import log_and_continue
 
 logger = logging.getLogger(__name__)
 
@@ -321,7 +320,6 @@ class AudioSegmenter:
         
         return updated_sentences
     
-    @log_and_continue(default_return=[], log_level="ERROR")
     async def segment_audio_for_sentences(self, task_id: str, audio_file_path: str, 
                                         sentences: List[Sentence], path_manager=None) -> List[Sentence]:
         """
@@ -336,43 +334,47 @@ class AudioSegmenter:
         Returns:
             List[Sentence]: 更新了音频路径的句子列表
         """
-        self.logger.info(f"[{task_id}] 开始为 {len(sentences)} 个句子进行智能音频切片")
+        try:
+            self.logger.info(f"[{task_id}] 开始为 {len(sentences)} 个句子进行智能音频切片")
+            
+            # 转换数据格式
+            transcript_data = self._sentences_to_transcript_data(sentences)
+            self.logger.info(f"[{task_id}] 转换了 {len(transcript_data)} 个转录片段")
+            
+            # 生成切片计划
+            clips_library, sentence_to_clip_id_map = self._create_audio_clips(transcript_data)
+            
+            if not clips_library:
+                self.logger.warning(f"[{task_id}] 未能生成有效的音频切片")
+                return sentences
+            
+            self.logger.info(f"[{task_id}] 生成了 {len(clips_library)} 个音频切片")
+            
+            # 使用传入的path_manager，如果没有则创建新的（向后兼容）
+            if path_manager is None:
+                path_manager = PathManager(task_id)
+                self.logger.warning(f"[{task_id}] AudioSegmenter: 未传入path_manager，创建新的临时目录")
+            
+            audio_clips_dir = path_manager.temp.audio_prompts_dir
+            
+            # 提取并保存音频切片
+            clip_files = await self._extract_and_save_audio_clips(
+                audio_file_path, clips_library, str(audio_clips_dir)
+            )
+            
+            if not clip_files:
+                self.logger.error(f"[{task_id}] 音频切片提取失败")
+                return sentences
+            
+            # 映射切片到句子
+            updated_sentences = self._map_clips_to_sentences(
+                sentences, clips_library, clip_files, sentence_to_clip_id_map
+            )
         
-        # 转换数据格式
-        transcript_data = self._sentences_to_transcript_data(sentences)
-        self.logger.info(f"[{task_id}] 转换了 {len(transcript_data)} 个转录片段")
-        
-        # 生成切片计划
-        clips_library, sentence_to_clip_id_map = self._create_audio_clips(transcript_data)
-        
-        if not clips_library:
-            self.logger.warning(f"[{task_id}] 未能生成有效的音频切片")
-            return sentences
-        
-        self.logger.info(f"[{task_id}] 生成了 {len(clips_library)} 个音频切片")
-        
-        # 使用传入的path_manager，如果没有则创建新的（向后兼容）
-        if path_manager is None:
-            path_manager = PathManager(task_id)
-            self.logger.warning(f"[{task_id}] AudioSegmenter: 未传入path_manager，创建新的临时目录")
-        
-        audio_clips_dir = path_manager.temp.audio_prompts_dir
-        
-        # 提取并保存音频切片
-        clip_files = await self._extract_and_save_audio_clips(
-            audio_file_path, clips_library, str(audio_clips_dir)
-        )
-        
-        if not clip_files:
-            self.logger.error(f"[{task_id}] 音频切片提取失败")
-            return sentences
-        
-        # 映射切片到句子
-        updated_sentences = self._map_clips_to_sentences(
-            sentences, clips_library, clip_files, sentence_to_clip_id_map
-        )
-        
-        successful_clips = len([s for s in updated_sentences if s.audio])
-        self.logger.info(f"[{task_id}] 智能音频切片完成，成功处理 {successful_clips} 个句子")
-        
-        return updated_sentences
+            successful_clips = len([s for s in updated_sentences if s.audio])
+            self.logger.info(f"[{task_id}] 智能音频切片完成，成功处理 {successful_clips} 个句子")
+            
+            return updated_sentences
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 音频切片处理失败: {e}")
+            return []

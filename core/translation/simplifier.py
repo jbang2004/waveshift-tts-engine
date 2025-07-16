@@ -1,6 +1,5 @@
-import asyncio
 import logging
-from typing import Dict, List, Optional, TypeVar, Any
+from typing import Dict, List, TypeVar, Any
 from .prompt import (
     SIMPLIFICATION_SYSTEM_PROMPT,
     SIMPLIFICATION_USER_PROMPT
@@ -44,9 +43,13 @@ class Simplifier:
 
     async def simplify(self, texts: Dict[str, str]) -> Dict[str, str]:
         """简化文本"""
-        system_prompt = SIMPLIFICATION_SYSTEM_PROMPT
-        user_prompt = SIMPLIFICATION_USER_PROMPT.format(json_content=texts)
-        return await self._invoke_client(system_prompt, user_prompt, {})
+        try:
+            system_prompt = SIMPLIFICATION_SYSTEM_PROMPT
+            user_prompt = SIMPLIFICATION_USER_PROMPT.format(json_content=texts)
+            return await self._invoke_client(system_prompt, user_prompt, {})
+        except Exception as e:
+            self.logger.error(f"文本简化失败: {e}")
+            return {}
 
     async def simplify_sentences(
         self,

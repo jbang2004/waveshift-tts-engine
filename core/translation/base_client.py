@@ -3,7 +3,7 @@
 """
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
+from typing import Dict
 from json_repair import loads
 
 logger = logging.getLogger(__name__)
@@ -70,7 +70,7 @@ class BaseTranslationClient(ABC):
             
         except Exception as e:
             self.logger.error(f"翻译请求失败: {type(e).__name__}: {e}", exc_info=True)
-            raise
+            return {}
     
     def _parse_response(self, raw_response: str) -> Dict[str, str]:
         """

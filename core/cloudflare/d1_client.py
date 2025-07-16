@@ -22,6 +22,22 @@ class TranscriptionData:
     is_first: bool = False
     is_last: bool = False
     ending_silence_ms: float = 0.0
+    
+    def to_sentence(self, task_id: str) -> Sentence:
+        """将转录数据转换为Sentence对象"""
+        return Sentence(
+            original_text=self.raw_text,
+            start_ms=self.start_ms,
+            end_ms=self.end_ms,
+            speaker=str(self.speaker_id),
+            translated_text=self.trans_text,
+            sequence=self.sentence_id,
+            target_duration=self.target_duration_ms if self.target_duration_ms else None,
+            is_first=self.is_first,
+            is_last=self.is_last,
+            task_id=task_id,
+            ending_silence=self.ending_silence_ms if self.ending_silence_ms else 0.0
+        )
 
 class D1Client:
     """Cloudflare D1 数据库客户端"""
@@ -193,25 +209,7 @@ class D1Client:
     
     async def to_sentence_objects(self, transcriptions: List[TranscriptionData], task_id: str) -> List[Sentence]:
         """将转录数据转换为Sentence对象"""
-        sentences = []
-        
-        for trans in transcriptions:
-            sentence = Sentence(
-                original_text=trans.raw_text,
-                start_ms=trans.start_ms,
-                end_ms=trans.end_ms,
-                speaker=str(trans.speaker_id),
-                translated_text=trans.trans_text,
-                sequence=trans.sentence_id,
-                target_duration=trans.target_duration_ms if trans.target_duration_ms else None,
-                is_first=trans.is_first,
-                is_last=trans.is_last,
-                task_id=task_id,
-                ending_silence=trans.ending_silence_ms if trans.ending_silence_ms else 0.0
-            )
-            sentences.append(sentence)
-            
-        return sentences
+        return [trans.to_sentence(task_id) for trans in transcriptions]
     
     async def get_transcription_segments_from_worker(self, task_id: str) -> List[Sentence]:
         """直接从 Worker 的表获取转录片段"""

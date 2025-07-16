@@ -1,33 +1,32 @@
 #!/usr/bin/env python3
 """
 WaveShift TTS Engine - 主应用入口点
-重构后的标准Python应用，移除了Ray架构依赖
+架构简化版本：消除过度抽象，直接使用服务字典
 """
 import sys
 import logging
 import uvicorn
-from config import get_config, init_logging
-from launcher import create_service_manager
+from config import get_config
+from launcher import create_services, cleanup_services
 
-# 初始化日志和配置
-init_logging()
+# 获取配置
 config = get_config()
 logger = logging.getLogger(__name__)
+
 
 def main():
     """主函数 - 启动WaveShift TTS Engine"""
     try:
         logger.info("=" * 60)
-        logger.info("WaveShift TTS Engine v2.0 启动中...")
+        logger.info("WaveShift TTS Engine v2.0 启动中（简化架构版本）...")
         logger.info("=" * 60)
         
-        # 初始化服务管理器
-        logger.info("正在初始化服务管理器...")
-        service_manager = create_service_manager()
-        logger.info("服务管理器初始化成功")
+        # 初始化所有服务（简化版本）
+        logger.info("正在初始化所有服务...")
+        services = create_services()
+        logger.info("所有服务初始化成功")
         
         # 显示已初始化的服务
-        services = service_manager.get_all_services()
         logger.info(f"已初始化 {len(services)} 个服务:")
         for service_name in services.keys():
             logger.info(f"  ✓ {service_name}")
@@ -35,9 +34,9 @@ def main():
         # 启动FastAPI服务器
         logger.info(f"正在启动HTTP服务器 - {config.SERVER_HOST}:{config.SERVER_PORT}")
         
-        # 导入API模块并设置服务管理器
-        from api import app, set_service_manager
-        set_service_manager(service_manager)
+        # 导入API模块并设置全局服务
+        from api import app, set_services
+        set_services(services)
         
         # 启动服务器
         uvicorn.run(
@@ -54,7 +53,11 @@ def main():
         logger.critical(f"应用启动失败: {e}", exc_info=True)
         sys.exit(1)
     finally:
+        # 清理服务（如果已初始化）
+        if 'services' in locals():
+            cleanup_services(services)
         logger.info("WaveShift TTS Engine 已关闭")
+
 
 if __name__ == "__main__":
     main()

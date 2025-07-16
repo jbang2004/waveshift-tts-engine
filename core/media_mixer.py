@@ -16,7 +16,6 @@ from config import Config
 from core.sentence_tools import Sentence
 from utils.path_manager import PathManager
 from utils.async_utils import BackgroundTaskManager
-from utils.error_handling import log_and_continue, ServiceError
 
 # 使用全局日志配置，直接获取 logger
 logger = logging.getLogger(__name__)
@@ -107,91 +106,94 @@ class MediaMixer:
             self.logger.error(f"状态更新失败 [任务ID: {task_id}] [状态: {status}]: {e}")
         
     
-    @log_and_continue(default_return=None, log_level="ERROR")
     async def mix_media(
-        self,
-        sentences_batch: List[Sentence],
-        path_manager: PathManager,
-        batch_counter: int,
-        task_id: str
+            self,
+            sentences_batch: List[Sentence],
+            path_manager: PathManager,
+            batch_counter: int,
+            task_id: str
     ) -> Optional[str]:
         """处理一批句子并返回处理后的视频片段路径"""
-        # 更新批次计数器
-        self.batch_counter = batch_counter
-        
-        # 记录内存使用情况
-        memory_usage = self._get_memory_usage()
-        buffer_duration = len(self.full_audio_buffer) / self.sample_rate
-        
-        self.logger.info(
-            f"[{task_id}] 开始处理批次 {batch_counter} - "
-            f"句子数: {len(sentences_batch)}, "
-            f"内存使用: {memory_usage:.2f}MB, "
-            f"缓冲区时长: {buffer_duration:.2f}s"
-        )
-        
-        # 第一批次时更新状态
-        if batch_counter == 0:
-            self.logger.info(f"[{task_id}] 第一批次，更新状态为 'mixing'")
-            self._create_status_update_task(task_id, 'mixing')
-
-        if not sentences_batch:
-            logger.warning(f"[{task_id}] mix_media: 收到空的句子列表")
-            return None
-
-        # 使用传递的path_manager获取媒体文件路径
-        media_files = {}
-        target_language = 'zh'  # 默认中文
-        generate_subtitle = False  # 默认不生成字幕
-        
-        # 从path_manager获取媒体文件路径
-        media_files['silent_video_path'] = path_manager.video_file_path
-        media_files['vocals_audio_path'] = path_manager.audio_file_path
-        media_files['background_audio_path'] = path_manager.instrumental_file_path  # 使用分离的背景音
-        media_files['video_width'] = 1920  # 默认视频尺寸
-        media_files['video_height'] = 1080
-        
-        if not media_files.get('silent_video_path') or not media_files.get('vocals_audio_path'):
-            self.logger.error(f"[{task_id}] MediaMixer: 缺少视频或音频文件路径")
-            return None
-        
-        output_path = path_manager.temp.segments_dir / f"segment_{batch_counter}.mp4"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        max_val = 1.0
-        
-        success, updated_buffer = await create_mixed_segment(
-            sentences=sentences_batch,
-            media_files=media_files,
-            output_path=str(output_path),
-            generate_subtitle=generate_subtitle,
-            config=self.config,
-            sample_rate=self.sample_rate,
-            max_val=max_val,
-            full_audio_buffer=self.full_audio_buffer,
-            task_id=task_id,
-            target_language=target_language,
-            max_buffer_samples=self.max_buffer_samples  # 传递滑动窗口参数
-        )
-        
-        if not success:
-            logger.error(f"[{task_id}] 批次 {batch_counter} 处理失败")
-            return None
-        
-        # 更新缓冲区
-        self.full_audio_buffer = updated_buffer
-        
-        logger.info(f"[{task_id}] 批次 {batch_counter} 处理完成")
-        
-        # 清理临时变量
-        if 'updated_buffer' in locals() and updated_buffer is not self.full_audio_buffer:
-            del updated_buffer
-        
-        # 定期强制垃圾回收（保留这个机制以提高内存效率）
-        if batch_counter % self.cleanup_interval == 0:
-            gc.collect()
+        try:
+            # 更新批次计数器
+            self.batch_counter = batch_counter
             
-        return str(output_path)
+            # 记录内存使用情况
+            memory_usage = self._get_memory_usage()
+            buffer_duration = len(self.full_audio_buffer) / self.sample_rate
+            
+            self.logger.info(
+                f"[{task_id}] 开始处理批次 {batch_counter} - "
+                f"句子数: {len(sentences_batch)}, "
+                f"内存使用: {memory_usage:.2f}MB, "
+                f"缓冲区时长: {buffer_duration:.2f}s"
+            )
+            
+            # 第一批次时更新状态
+            if batch_counter == 0:
+                self.logger.info(f"[{task_id}] 第一批次，更新状态为 'mixing'")
+                self._create_status_update_task(task_id, 'mixing')
+
+            if not sentences_batch:
+                logger.warning(f"[{task_id}] mix_media: 收到空的句子列表")
+                return None
+
+            # 使用传递的path_manager获取媒体文件路径
+            media_files = {}
+            target_language = 'zh'  # 默认中文
+            generate_subtitle = False  # 默认不生成字幕
+            
+            # 从path_manager获取媒体文件路径
+            media_files['silent_video_path'] = path_manager.video_file_path
+            media_files['vocals_audio_path'] = path_manager.audio_file_path
+            media_files['background_audio_path'] = path_manager.instrumental_file_path  # 使用分离的背景音
+            media_files['video_width'] = 1920  # 默认视频尺寸
+            media_files['video_height'] = 1080
+            
+            if not media_files.get('silent_video_path') or not media_files.get('vocals_audio_path'):
+                self.logger.error(f"[{task_id}] MediaMixer: 缺少视频或音频文件路径")
+                return None
+            
+            output_path = path_manager.temp.segments_dir / f"segment_{batch_counter}.mp4"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            max_val = 1.0
+            
+            success, updated_buffer = await create_mixed_segment(
+                sentences=sentences_batch,
+                media_files=media_files,
+                output_path=str(output_path),
+                generate_subtitle=generate_subtitle,
+                config=self.config,
+                sample_rate=self.sample_rate,
+                max_val=max_val,
+                full_audio_buffer=self.full_audio_buffer,
+                task_id=task_id,
+                target_language=target_language,
+                max_buffer_samples=self.max_buffer_samples  # 传递滑动窗口参数
+            )
+            
+            if not success:
+                logger.error(f"[{task_id}] 批次 {batch_counter} 处理失败")
+                return None
+            
+            # 更新缓冲区
+            self.full_audio_buffer = updated_buffer
+            
+            logger.info(f"[{task_id}] 批次 {batch_counter} 处理完成")
+            
+            # 清理临时变量
+            if 'updated_buffer' in locals() and updated_buffer is not self.full_audio_buffer:
+                del updated_buffer
+            
+            # 定期强制垃圾回收（保留这个机制以提高内存效率）
+            if batch_counter % self.cleanup_interval == 0:
+                gc.collect()
+            
+            return str(output_path)
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 音视频混合处理失败: {e}")
+            return None
     
     async def cleanup(self):
         """清理MediaMixer资源"""

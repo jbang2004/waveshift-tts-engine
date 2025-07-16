@@ -6,7 +6,7 @@ from pathlib import Path
 import aiofiles
 
 from config import get_config
-from core.cloudflare.d1_client import D1Client, TranscriptionData
+from core.cloudflare.d1_client import D1Client
 from core.cloudflare.r2_client import R2Client
 from core.sentence_tools import Sentence
 from utils.path_manager import PathManager
@@ -21,25 +21,14 @@ class DataFetcher:
         self.config = get_config()
         self.logger = logging.getLogger(__name__)
         
-        # 使用依赖注入的客户端，如果没有则创建新的（向后兼容）
-        if d1_client is not None:
-            self.d1_client = d1_client
-        else:
-            self.d1_client = D1Client(
-                account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
-                api_token=self.config.CLOUDFLARE_API_TOKEN,
-                database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
-            )
-        
-        if r2_client is not None:
-            self.r2_client = r2_client
-        else:
-            self.r2_client = R2Client(
-                account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
-                access_key_id=self.config.CLOUDFLARE_R2_ACCESS_KEY_ID,
-                secret_access_key=self.config.CLOUDFLARE_R2_SECRET_ACCESS_KEY,
-                bucket_name=self.config.CLOUDFLARE_R2_BUCKET_NAME
-            )
+        # 使用依赖注入的客户端，如果没有则抛出异常（强制使用依赖注入）
+        if d1_client is None:
+            raise ValueError("D1Client 必须通过依赖注入提供")
+        if r2_client is None:
+            raise ValueError("R2Client 必须通过依赖注入提供")
+            
+        self.d1_client = d1_client
+        self.r2_client = r2_client
         
         # 初始化音频分离器
         self.vocal_separator = VocalSeparator()
@@ -192,7 +181,7 @@ class DataFetcher:
         except Exception as e:
             total_duration = time.time() - start_time
             self.logger.error(f"[{task_id}] 并行获取任务数据失败: {e}, 耗时: {total_duration:.2f}s")
-            return {"status": "error", "message": f"并行获取任务数据失败: {e}"}
+            return {"status": "error", "message": "数据获取失败"}
     
     async def _download_and_separate_audio(self, task_id: str, audio_path_r2: str, 
                                           path_manager: PathManager) -> Tuple[Optional[str], Optional[str]]:
