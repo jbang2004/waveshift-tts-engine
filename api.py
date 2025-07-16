@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import os
 from typing import Dict, Any
 
 import uvicorn
@@ -14,7 +15,14 @@ from utils.async_utils import BackgroundTaskManager
 config = get_config()
 logger = logging.getLogger(__name__)
 
-app = FastAPI(debug=True, title="WaveShift TTS Engine API", version="2.0.0")
+# 检测是否在函数计算环境
+is_fc_env = os.getenv('FC_FUNC_CODE_PATH') is not None
+
+app = FastAPI(
+    debug=not is_fc_env, 
+    title="WaveShift TTS Engine API", 
+    version="2.0.0-fc" if is_fc_env else "2.0.0"
+)
 
 app.add_middleware(
     CORSMiddleware,

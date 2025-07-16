@@ -1,5 +1,6 @@
 import sys
 import logging
+import os
 from typing import Dict, Any
 from config import get_config, init_logging
 
@@ -17,6 +18,11 @@ from core.hls_manager import HLSManager
 from orchestrator import MainOrchestrator
 from core.cloudflare.d1_client import D1Client
 from core.client_manager import ClientManager
+
+
+def is_fc_environment():
+    """检测是否在函数计算环境中运行"""
+    return os.getenv('FC_FUNC_CODE_PATH') is not None
 
 
 def initialize_services(config) -> Dict[str, Any]:

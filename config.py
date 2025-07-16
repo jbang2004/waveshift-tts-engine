@@ -55,6 +55,31 @@ class PathConfig:
 
 
 @dataclass
+class FCPathConfig(PathConfig):
+    """函数计算专用路径配置"""
+    base_dir: Path = field(default_factory=lambda: Path('/tmp'))
+    tasks_dir: Path = field(default_factory=lambda: Path('/tmp/tasks'))
+    public_dir: Path = field(default_factory=lambda: Path('/tmp/public'))
+    model_dir: Path = field(default_factory=lambda: Path('/code/models'))
+    
+    def __post_init__(self):
+        """创建必要的目录（云函数环境）"""
+        # 只创建tmp目录下的目录
+        tmp_directories = [self.base_dir, self.tasks_dir, self.public_dir, 
+                          self.public_dir / "playlists", self.public_dir / "segments"]
+        for dir_path in tmp_directories:
+            try:
+                dir_path.mkdir(parents=True, exist_ok=True)
+                os.chmod(str(dir_path), 0o755)
+            except Exception as e:
+                logger.warning(f"创建目录失败 {dir_path}: {e}")
+        
+        # 模型目录不需要创建，应该在镜像中预置
+        if not self.model_dir.exists():
+            logger.warning(f"模型目录不存在: {self.model_dir}")
+
+
+@dataclass
 class CloudflareConfig:
     """Cloudflare配置"""
     account_id: str = field(default_factory=lambda: os.getenv("CLOUDFLARE_ACCOUNT_ID", ""))
@@ -201,25 +226,8 @@ class MemoryConfig:
     cleanup_interval: int = field(default_factory=lambda: int(os.getenv("CLEANUP_INTERVAL", "5")))
 
 
-@dataclass
-class AppConfig:
-    """应用程序总配置"""
-    server: ServerConfig = field(default_factory=ServerConfig)
-    paths: PathConfig = field(default_factory=PathConfig)
-    cloudflare: CloudflareConfig = field(default_factory=CloudflareConfig)
-    audio: AudioProcessingConfig = field(default_factory=AudioProcessingConfig)
-    hls: HLSConfig = field(default_factory=HLSConfig)
-    translation: TranslationConfig = field(default_factory=TranslationConfig)
-    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
-    memory: MemoryConfig = field(default_factory=MemoryConfig)
-    
-    def __post_init__(self):
-        """初始化后验证"""
-        logger.info("应用程序配置初始化完成")
-        logger.info(f"服务器: {self.server.host}:{self.server.port}")
-        logger.info(f"翻译模型: {self.translation.model}")
-        logger.info(f"音频目标采样率: {self.audio.target_sr}")
-    
+class AppConfigMixin:
+    """应用配置混入类，提供通用方法"""
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典格式（用于兼容旧接口）"""
         return {
@@ -296,16 +304,80 @@ class AppConfig:
         }
 
 
+@dataclass
+class AppConfig(AppConfigMixin):
+    """应用程序总配置"""
+    server: ServerConfig = field(default_factory=ServerConfig)
+    paths: PathConfig = field(default_factory=PathConfig)
+    cloudflare: CloudflareConfig = field(default_factory=CloudflareConfig)
+    audio: AudioProcessingConfig = field(default_factory=AudioProcessingConfig)
+    hls: HLSConfig = field(default_factory=HLSConfig)
+    translation: TranslationConfig = field(default_factory=TranslationConfig)
+    runtime: RuntimeConfig = field(default_factory=RuntimeConfig)
+    memory: MemoryConfig = field(default_factory=MemoryConfig)
+    
+    def __post_init__(self):
+        """初始化后验证"""
+        logger.info("应用程序配置初始化完成")
+        logger.info(f"服务器: {self.server.host}:{self.server.port}")
+        logger.info(f"翻译模型: {self.translation.model}")
+        logger.info(f"音频目标采样率: {self.audio.target_sr}")
+
+
+@dataclass 
+class FCAppConfig(AppConfig):
+    """函数计算专用配置"""
+    paths: FCPathConfig = field(default_factory=FCPathConfig)
+    
+    def __post_init__(self):
+        # 先调用父类初始化
+        super().__post_init__()
+        
+        # 云函数环境配置优化
+        self.audio.cleanup_temp_files = True  # 强制清理临时文件
+        self.audio.save_tts_audio = False     # 禁用音频保存以节省空间
+        self.memory.cleanup_interval = 2      # 更频繁的内存清理
+        self.runtime.max_parallel_segments = 1  # 减少并发以控制内存
+        
+        logger.info("函数计算配置初始化完成")
+        logger.info(f"临时目录: {self.paths.base_dir}")
+        logger.info(f"模型目录: {self.paths.model_dir}")
+        logger.info(f"内存优化: 启用")
+
+
+def is_fc_environment() -> bool:
+    """检测是否在函数计算环境中运行"""
+    fc_indicators = [
+        'FC_FUNC_CODE_PATH',
+        'FC_RUNTIME_API', 
+        'FC_FUNC_NAME',
+        'FC_REQUEST_ID'
+    ]
+    return any(os.getenv(indicator) for indicator in fc_indicators)
+
+
 class ConfigManager:
-    """配置管理器 - 提供向后兼容的接口"""
+    """配置管理器 - 提供向后兼容的接口，自动检测环境"""
     
     def __init__(self):
-        self.config = AppConfig()
+        # 自动检测环境并选择合适的配置
+        if is_fc_environment():
+            self.config = FCAppConfig()
+            self.environment = 'fc'
+        else:
+            self.config = AppConfig()
+            self.environment = 'local'
+        
         self.logger = logging.getLogger(__name__)
+        self.logger.info(f"配置管理器初始化完成，环境: {self.environment}")
     
     def get_translation_api_key(self) -> str:
         """获取翻译API密钥"""
         return self.config.translation.get_api_key()
+    
+    def is_function_compute(self) -> bool:
+        """检查是否为函数计算环境"""
+        return self.environment == 'fc'
     
     def __getattr__(self, name: str) -> Any:
         """提供向后兼容的属性访问"""
@@ -359,7 +431,35 @@ LOGGING_CONFIG = {
 
 def init_logging():
     """初始化全局日志配置"""
-    logging.config.dictConfig(LOGGING_CONFIG)
+    # 根据环境选择不同的日志配置
+    if is_fc_environment():
+        # 云函数环境：只使用控制台日志
+        fc_logging_config = {
+            "version": 1,
+            "disable_existing_loggers": False,
+            "formatters": {
+                "fc_standard": {
+                    "format": "[FC] %(levelname)s | %(asctime)s | %(name)s | %(message)s",
+                    "datefmt": "%Y-%m-%d %H:%M:%S",
+                },
+            },
+            "handlers": {
+                "console": {
+                    "class": "logging.StreamHandler",
+                    "level": "INFO",
+                    "formatter": "fc_standard",
+                    "stream": "ext://sys.stdout",
+                },
+            },
+            "root": {
+                "level": "INFO",
+                "handlers": ["console"],
+            },
+        }
+        logging.config.dictConfig(fc_logging_config)
+    else:
+        # 本地环境：使用文件+控制台日志
+        logging.config.dictConfig(LOGGING_CONFIG)
 
 # 全局配置实例
 _config_instance = None

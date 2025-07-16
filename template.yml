@@ -1,0 +1,272 @@
+ROSTemplateFormatVersion: '2015-09-01'
+Transform: 'Aliyun::Serverless-2018-04-03'
+
+# WaveShift TTS Engine - 阿里云函数计算部署配置
+# 使用ROS模板定义GPU云函数资源
+
+Description: 'WaveShift TTS Engine GPU云函数部署模板'
+
+Parameters:
+  # 基础配置参数
+  ServiceName:
+    Type: String
+    Default: 'waveshift-tts'
+    Description: '函数计算服务名称'
+  
+  FunctionName:
+    Type: String  
+    Default: 'tts-processor'
+    Description: 'TTS处理函数名称'
+  
+  # GPU配置参数
+  InstanceType:
+    Type: String
+    Default: 'fc.gpu.tesla.1'
+    AllowedValues:
+      - 'fc.gpu.tesla.1'
+      - 'fc.gpu.ada.1'
+    Description: 'GPU实例类型'
+  
+  GpuMemorySize:
+    Type: Number
+    Default: 8192
+    MinValue: 1024
+    MaxValue: 16384
+    Description: 'GPU显存大小(MB)'
+  
+  MemorySize:
+    Type: Number
+    Default: 4096
+    MinValue: 2048
+    MaxValue: 32768
+    Description: '内存大小(MB)'
+  
+  # 镜像配置
+  ImageUri:
+    Type: String
+    Description: '容器镜像URI（需要先推送到ACR）'
+    Default: 'registry.cn-hangzhou.aliyuncs.com/your-namespace/waveshift-tts:latest'
+  
+  # 环境变量（敏感信息通过参数传入）
+  CloudflareAccountId:
+    Type: String
+    Description: 'Cloudflare账户ID'
+    NoEcho: true
+  
+  CloudflareApiToken:
+    Type: String
+    Description: 'Cloudflare API令牌'
+    NoEcho: true
+  
+  CloudflareD1DatabaseId:
+    Type: String
+    Description: 'Cloudflare D1数据库ID'
+    NoEcho: true
+  
+  CloudflareR2AccessKeyId:
+    Type: String
+    Description: 'Cloudflare R2访问密钥ID'
+    NoEcho: true
+  
+  CloudflareR2SecretAccessKey:
+    Type: String
+    Description: 'Cloudflare R2秘密访问密钥'
+    NoEcho: true
+  
+  CloudflareR2BucketName:
+    Type: String
+    Description: 'Cloudflare R2存储桶名称'
+  
+  TranslationModel:
+    Type: String
+    Default: 'deepseek'
+    AllowedValues:
+      - 'deepseek'
+      - 'gemini'
+      - 'grok'
+      - 'groq'
+    Description: '翻译模型选择'
+  
+  DeepseekApiKey:
+    Type: String
+    Description: 'DeepSeek API密钥'
+    NoEcho: true
+    Default: ''
+
+Resources:
+  # 函数计算服务
+  WaveShiftTTSService:
+    Type: 'Aliyun::FC::Service'
+    Properties:
+      ServiceName: !Ref ServiceName
+      Description: 'WaveShift TTS引擎GPU函数服务'
+      InternetAccess: true
+      LogConfig:
+        Project: !Sub '${ServiceName}-logs'
+        Logstore: 'function-logs'
+        EnableRequestMetrics: true
+        EnableInstanceMetrics: true
+      NasConfig: null
+      VpcConfig: null
+      Role: !GetAtt FunctionComputeRole.Arn
+      TracingConfig:
+        Type: Jaeger
+        Params:
+          Endpoint: ''
+
+  # GPU TTS处理函数
+  TTSProcessorFunction:
+    Type: 'Aliyun::FC::Function'
+    Properties:
+      ServiceName: !Ref WaveShiftTTSService
+      FunctionName: !Ref FunctionName
+      Description: 'GPU加速的TTS语音合成处理函数'
+      Runtime: 'custom-container'
+      Handler: 'handler.handler'
+      CodeUri: './'
+      Timeout: 7200  # 2小时超时
+      MemorySize: !Ref MemorySize
+      InstanceType: !Ref InstanceType
+      InstanceConcurrency: 1  # GPU函数建议设置为1
+      
+      # GPU配置
+      GpuMemorySize: !Ref GpuMemorySize
+      
+      # 容器配置
+      CustomContainerConfig:
+        Image: !Ref ImageUri
+        Command: '["python3", "handler.py"]'
+        Args: '[]'
+        AccelerationType: 'Default'
+        InstanceType: !Ref InstanceType
+      
+      # 环境变量配置
+      EnvironmentVariables:
+        # Cloudflare配置
+        CLOUDFLARE_ACCOUNT_ID: !Ref CloudflareAccountId
+        CLOUDFLARE_API_TOKEN: !Ref CloudflareApiToken
+        CLOUDFLARE_D1_DATABASE_ID: !Ref CloudflareD1DatabaseId
+        CLOUDFLARE_R2_ACCESS_KEY_ID: !Ref CloudflareR2AccessKeyId
+        CLOUDFLARE_R2_SECRET_ACCESS_KEY: !Ref CloudflareR2SecretAccessKey
+        CLOUDFLARE_R2_BUCKET_NAME: !Ref CloudflareR2BucketName
+        
+        # AI模型配置
+        TRANSLATION_MODEL: !Ref TranslationModel
+        DEEPSEEK_API_KEY: !Ref DeepseekApiKey
+        
+        # 云函数优化配置
+        ENABLE_VOCAL_SEPARATION: 'true'
+        VOCAL_SEPARATION_MODEL: 'Kim_Vocal_2.onnx'
+        SAVE_TTS_AUDIO: 'false'
+        CLEANUP_TEMP_FILES: 'true'
+        
+        # 性能配置
+        TTS_BATCH_SIZE: '3'
+        MAX_PARALLEL_SEGMENTS: '1'
+        MEMORY_THRESHOLD_MB: '3000'
+        CLEANUP_INTERVAL: '2'
+        
+        # 函数计算环境标识
+        FC_FUNC_CODE_PATH: '/code'
+        FC_RUNTIME_API: 'true'
+
+  # HTTP触发器
+  HttpTrigger:
+    Type: 'Aliyun::FC::Trigger'
+    Properties:
+      ServiceName: !Ref WaveShiftTTSService
+      FunctionName: !Ref TTSProcessorFunction
+      TriggerName: 'http-trigger'
+      TriggerType: 'HTTP'
+      TriggerConfig:
+        AuthType: 'ANONYMOUS'
+        Methods:
+          - 'GET'
+          - 'POST'
+        DisableURLInternet: false
+
+  # 函数计算执行角色
+  FunctionComputeRole:
+    Type: 'Aliyun::RAM::Role'
+    Properties:
+      RoleName: !Sub '${ServiceName}-fc-execution-role'
+      Description: 'WaveShift TTS函数计算执行角色'
+      AssumeRolePolicyDocument:
+        Version: '1'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - fc.aliyuncs.com
+            Action:
+              - 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'FunctionComputeExecutionPolicy'
+          PolicyDocument:
+            Version: '1'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'logs:PostLogStoreLogs'
+                  - 'ecs:CreateNetworkInterface'
+                  - 'ecs:DescribeNetworkInterfaces'
+                  - 'ecs:DetachNetworkInterface'
+                  - 'ecs:DeleteNetworkInterface'
+                Resource: '*'
+
+  # 极速模式配置（预留实例）
+  ProvisionConfig:
+    Type: 'Aliyun::FC::ProvisionConfig'
+    Properties:
+      ServiceName: !Ref WaveShiftTTSService
+      FunctionName: !Ref TTSProcessorFunction
+      Qualifier: 'LATEST'
+      Target: 1  # 预留1个实例
+      ScheduledActions:
+        - Name: 'scale-up-morning'
+          ScheduleExpression: 'cron(0 8 * * *)'  # 每天8点扩容
+          Target: 2
+        - Name: 'scale-down-night'
+          ScheduleExpression: 'cron(0 2 * * *)'  # 每天2点缩容
+          Target: 0
+
+  # 日志项目（如果不存在）
+  LogProject:
+    Type: 'Aliyun::SLS::Project'
+    Properties:
+      Name: !Sub '${ServiceName}-logs'
+      Description: 'WaveShift TTS函数计算日志项目'
+
+  # 日志库
+  LogStore:
+    Type: 'Aliyun::SLS::Logstore'
+    Properties:
+      ProjectName: !Ref LogProject
+      LogstoreName: 'function-logs'
+      TTL: 7  # 日志保留7天
+      ShardCount: 2
+
+Outputs:
+  ServiceName:
+    Description: '函数计算服务名称'
+    Value: !Ref WaveShiftTTSService
+  
+  FunctionName:
+    Description: 'TTS处理函数名称'
+    Value: !Ref TTSProcessorFunction
+  
+  HttpTriggerUrl:
+    Description: 'HTTP触发器URL'
+    Value: !Sub 'https://${ALIYUN::AccountId}.${ALIYUN::Region}.fc.aliyuncs.com/2016-08-15/proxy/${ServiceName}/${FunctionName}/'
+  
+  TtsEndpoint:
+    Description: 'TTS处理接口'
+    Value: !Sub 'https://${ALIYUN::AccountId}.${ALIYUN::Region}.fc.aliyuncs.com/2016-08-15/proxy/${ServiceName}/${FunctionName}/api/start_tts'
+  
+  StatusEndpoint:
+    Description: '任务状态查询接口'
+    Value: !Sub 'https://${ALIYUN::AccountId}.${ALIYUN::Region}.fc.aliyuncs.com/2016-08-15/proxy/${ServiceName}/${FunctionName}/api/task/{task_id}/status'
+  
+  HealthEndpoint:
+    Description: '健康检查接口'
+    Value: !Sub 'https://${ALIYUN::AccountId}.${ALIYUN::Region}.fc.aliyuncs.com/2016-08-15/proxy/${ServiceName}/${FunctionName}/api/health'
