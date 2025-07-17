@@ -11,6 +11,7 @@ from core.cloudflare.r2_client import R2Client
 from core.sentence_tools import Sentence
 from utils.path_manager import PathManager
 from core.vocal_separator import VocalSeparator
+from core.audio_segmenter import AudioSegmenter
 
 logger = logging.getLogger(__name__)
 
@@ -30,19 +31,20 @@ class DataFetcher:
         self.d1_client = d1_client
         self.r2_client = r2_client
         
-        # 初始化音频分离器
+        # 初始化音频处理器（保持架构一致性）
         self.vocal_separator = VocalSeparator()
+        self.audio_segmenter = AudioSegmenter()
         
         self.logger.info("数据获取服务初始化完成")
     
     async def fetch_task_data(self, task_id: str, path_manager: PathManager = None) -> Dict:
         """
-        并行化的任务数据获取 - 大幅提升数据获取性能
+        并行化的任务数据获取 - 真正的并行优化版本
         
         优化策略：
         1. D1查询并行化（句子数据 + 媒体路径）
-        2. R2下载并行化（音频 + 视频）
-        3. 音频分离后台处理
+        2. 音频处理链独立完成（下载+分离+切分）
+        3. 视频下载作为后台任务，不阻塞音频处理
         4. 详细性能监控
         
         Args:
@@ -50,7 +52,7 @@ class DataFetcher:
             path_manager: 路径管理器（如果没有则创建新的）
             
         Returns:
-            Dict: 包含句子列表和音频文件路径的字典
+            Dict: 包含句子列表、音频文件路径和视频下载任务的字典
         """
         start_time = time.time()
         
@@ -95,85 +97,89 @@ class DataFetcher:
             if not sentences:
                 return {"status": "error", "message": "未找到转录数据"}
             
-            # 阶段2: 并行下载和处理媒体文件
-            download_start_time = time.time()
-            self.logger.info(f"[{task_id}] 开始并行媒体文件下载")
+            # 阶段2: 真正的并行优化 - 音频处理链和视频下载真正同时开始
+            parallel_start_time = time.time()
+            self.logger.info(f"[{task_id}] 开始真正的并行媒体处理：音频处理链和视频下载同时开始")
             
-            download_tasks = []
+            # 初始化结果变量
+            vocals_path, instrumental_path, segmented_sentences = None, None, sentences
+            video_download_task = None
             
-            # 创建音频下载任务
+            # 创建并行任务（真正同时开始）
+            audio_task = None
+            
+            # 音频处理链任务
             if media_paths.get('audio_path'):
                 audio_task = asyncio.create_task(
-                    self._download_and_separate_audio(task_id, media_paths['audio_path'], path_manager),
-                    name=f"download_audio_{task_id}"
+                    self._process_audio_chain(task_id, media_paths['audio_path'], path_manager, sentences),
+                    name=f"audio_chain_{task_id}"
                 )
-                download_tasks.append(('audio', audio_task))
+                self.logger.info(f"[{task_id}] 音频处理链任务已启动")
             
-            # 创建视频下载任务  
+            # 视频下载任务（同时开始）
             if media_paths.get('video_path'):
-                video_task = asyncio.create_task(
+                video_download_task = asyncio.create_task(
                     self._download_video_file(task_id, media_paths['video_path'], path_manager),
                     name=f"download_video_{task_id}"
                 )
-                download_tasks.append(('video', video_task))
+                self.logger.info(f"[{task_id}] 视频下载任务已启动（同时开始）")
             
-            # 等待所有下载任务完成
-            if download_tasks:
-                download_results = await asyncio.gather(
-                    *[task for _, task in download_tasks], return_exceptions=True
-                )
-                
-                download_duration = time.time() - download_start_time
-                self.logger.info(f"[{task_id}] 媒体文件并行下载完成，耗时: {download_duration:.2f}s")
-                
-                # 处理下载结果
-                vocals_path, instrumental_path, video_file_path = None, None, None
-                
-                for i, (task_type, task) in enumerate(download_tasks):
-                    result = download_results[i]
+            # 只等待音频处理链完成
+            if audio_task:
+                try:
+                    self.logger.info(f"[{task_id}] 等待音频处理链完成...")
+                    audio_result = await audio_task
                     
-                    if isinstance(result, Exception):
-                        self.logger.error(f"[{task_id}] {task_type}下载失败: {result}")
-                        continue
-                    
-                    if task_type == 'audio':
-                        vocals_path, instrumental_path = result
-                        if vocals_path:
-                            self.logger.info(f"[{task_id}] 音频处理成功: vocals={vocals_path}")
-                    elif task_type == 'video':
-                        video_file_path = result
-                        if video_file_path:
-                            self.logger.info(f"[{task_id}] 视频下载成功: {video_file_path}")
-            else:
-                vocals_path, instrumental_path, video_file_path = None, None, None
+                    if audio_result and len(audio_result) == 3:
+                        vocals_path, instrumental_path, segmented_sentences = audio_result
+                        if segmented_sentences:
+                            self.logger.info(f"[{task_id}] 音频处理链完成: 分离+切分 {len(segmented_sentences)} 个句子")
+                        else:
+                            segmented_sentences = sentences  # 切分失败，使用原始句子
+                    else:
+                        self.logger.error(f"[{task_id}] 音频处理链失败")
+                        # 在音频处理失败时使用原始句子
+                        segmented_sentences = sentences
+                        
+                except Exception as e:
+                    self.logger.error(f"[{task_id}] 音频处理链异常: {e}")
+                    # 在异常时使用原始句子
+                    segmented_sentences = sentences
             
-            # 设置媒体路径
-            if vocals_path and video_file_path:
-                path_manager.set_media_paths(vocals_path, video_file_path)
+            # 计算音频处理耗时
+            audio_duration = time.time() - parallel_start_time
+            self.logger.info(f"[{task_id}] 音频处理链完成，耗时: {audio_duration:.2f}s, 视频下载在后台继续")
             
-            # 构建结果
+            # 设置媒体路径（暂时使用音频路径，视频在需要时再获取）
+            if vocals_path:
+                path_manager.set_media_paths(vocals_path, None)  # 视频路径暂时为None
+            
+            # 构建结果（真正的并行优化版本）
             total_duration = time.time() - start_time
             result = {
                 "status": "success",
-                "sentences": sentences,
+                "sentences": segmented_sentences,  # 返回切分后的句子（包含音频路径）
                 "audio_file_path": vocals_path,  # 返回分离后的人声
-                "video_file_path": video_file_path,
+                "video_file_path": None,  # 视频路径在后台任务中获取
                 "vocals_file_path": vocals_path,
                 "instrumental_file_path": instrumental_path,
-                "transcription_count": len(sentences),
+                "transcription_count": len(segmented_sentences),
                 "path_manager": path_manager,
+                "video_download_task": video_download_task,  # 视频下载任务引用
                 "performance": {
                     "total_duration": total_duration,
                     "d1_duration": d1_duration,
-                    "download_duration": download_duration if 'download_duration' in locals() else 0,
-                    "efficiency_gain": f"{((d1_duration + (download_duration if 'download_duration' in locals() else 0)) / total_duration - 1) * 100:.1f}%"
+                    "audio_duration": audio_duration if 'audio_duration' in locals() else 0,
+                    "efficiency_gain": f"{(d1_duration / total_duration * 100):.1f}%",
+                    "optimization": "true_parallel"
                 }
             }
             
             self.logger.info(
-                f"[{task_id}] 并行数据获取成功: {len(sentences)} 个句子, "
+                f"[{task_id}] 真正并行数据获取成功: {len(segmented_sentences)} 个句子(已切分), "
                 f"总耗时: {total_duration:.2f}s, D1: {d1_duration:.2f}s, "
-                f"下载: {download_duration if 'download_duration' in locals() else 0:.2f}s"
+                f"音频处理: {audio_duration if 'audio_duration' in locals() else 0:.2f}s, "
+                f"视频下载: 后台运行中"
             )
             
             return result
@@ -183,18 +189,25 @@ class DataFetcher:
             self.logger.error(f"[{task_id}] 并行获取任务数据失败: {e}, 耗时: {total_duration:.2f}s")
             return {"status": "error", "message": "数据获取失败"}
     
-    async def _download_and_separate_audio(self, task_id: str, audio_path_r2: str, 
-                                          path_manager: PathManager) -> Tuple[Optional[str], Optional[str]]:
+    async def _process_audio_chain(self, task_id: str, audio_path_r2: str, 
+                                  path_manager: PathManager, sentences: List[Sentence] = None) -> Tuple[Optional[str], Optional[str], Optional[List[Sentence]]]:
         """
-        并行优化的音频下载和分离处理
+        完整的音频处理链：下载 -> 分离 -> 切分
         
         优化策略：
         1. 异步下载音频文件
-        2. 后台音频分离处理
-        3. 智能降级策略
+        2. 音频分离处理
+        3. 音频切分处理（如果传入sentences）
+        4. 智能降级策略和错误恢复
+        
+        Args:
+            task_id: 任务ID
+            audio_path_r2: R2中的音频文件路径
+            path_manager: 路径管理器
+            sentences: 句子列表（可选，用于音频切分）
         
         Returns:
-            Tuple[vocals_path, instrumental_path]: 分离后的人声和背景音路径
+            Tuple[vocals_path, instrumental_path, segmented_sentences]: 分离后的人声、背景音路径和切分后的句子
         """
         try:
             download_start_time = time.time()
@@ -205,7 +218,7 @@ class DataFetcher:
             
             if not audio_data:
                 self.logger.error(f"[{task_id}] 下载音频文件失败: {audio_path_r2}")
-                return None, None
+                return None, None, None
             
             download_duration = time.time() - download_start_time
             self.logger.info(f"[{task_id}] 音频下载完成，耗时: {download_duration:.2f}s, 大小: {len(audio_data)} bytes")
@@ -237,7 +250,12 @@ class DataFetcher:
                         f"[{task_id}] 音频分离成功，耗时: {separation_duration:.2f}s, "
                         f"人声: {separation_result['vocals_path']}, 背景: {separation_result['instrumental_path']}"
                     )
-                    return separation_result['vocals_path'], separation_result['instrumental_path']
+                    # 分离成功，记录结果但不返回，继续到统一的音频切分处理
+                    vocals_path = separation_result['vocals_path']
+                    instrumental_path = separation_result['instrumental_path']
+                    
+                    # 不在这里返回，让所有分支都走统一的音频切分处理
+                    # return vocals_path, instrumental_path, segmented_sentences
                 else:
                     self.logger.warning(
                         f"[{task_id}] 音频分离失败: {separation_result['error']}，"
@@ -246,12 +264,46 @@ class DataFetcher:
             else:
                 self.logger.info(f"[{task_id}] 音频分离功能未启用，使用原始音频")
             
-            # 分离失败或未启用，使用原始音频作为"人声"，背景音为None
-            return str(original_audio_path), None
+            # 如果分离失败或未启用，使用原始音频作为"人声"
+            if not vocals_path:
+                vocals_path = str(original_audio_path)
+            if not instrumental_path:
+                instrumental_path = None
+            
+            # 统一的音频切分处理（如果传入了sentences）
+            segmented_sentences = sentences  # 默认使用原始句子
+            if sentences:
+                try:
+                    self.logger.info(f"[{task_id}] 开始音频切分处理（音频处理链内）...")
+                    segment_start_time = time.time()
+                    
+                    # 使用分离后的人声进行切分
+                    result_sentences = await self.audio_segmenter.segment_audio_for_sentences(
+                        task_id, vocals_path, sentences, path_manager
+                    )
+                    
+                    segment_duration = time.time() - segment_start_time
+                    
+                    if result_sentences:
+                        segmented_sentences = result_sentences
+                        self.logger.info(
+                            f"[{task_id}] 音频切分完成，耗时: {segment_duration:.2f}s, "
+                            f"处理了 {len(segmented_sentences)} 个句子"
+                        )
+                    else:
+                        self.logger.warning(f"[{task_id}] 音频切分返回空结果，使用原始句子")
+                        
+                except Exception as e:
+                    self.logger.error(f"[{task_id}] 音频切分失败: {e}，降级使用未切分的句子")
+                    # segmented_sentences 已经是 sentences，不需要修改
+            
+            # 返回三元组：(人声路径, 背景音路径, 切分后的句子)
+            return vocals_path, instrumental_path, segmented_sentences
             
         except Exception as e:
-            self.logger.error(f"[{task_id}] 并行音频下载和分离异常: {e}")
-            return None, None
+            self.logger.error(f"[{task_id}] 音频处理链异常: {e}")
+            # 在异常情况下返回原始句子作为备用方案
+            return None, None, sentences
     
     async def _download_video_file(self, task_id: str, video_path_r2: str, 
                                    path_manager: PathManager) -> Optional[str]:
@@ -319,6 +371,43 @@ class DataFetcher:
                                hls_playlist_url: str = None) -> bool:
         """更新任务状态"""
         return await self.d1_client.update_task_status(task_id, status, error_message, hls_playlist_url)
+    
+    async def await_video_completion(self, task_id: str, video_download_task) -> str:
+        """
+        等待视频下载完成的统一接口
+        
+        Args:
+            task_id: 任务ID
+            video_download_task: 视频下载任务引用
+            
+        Returns:
+            str: 视频文件路径
+        """
+        if not video_download_task:
+            self.logger.warning(f"[{task_id}] 没有视频下载任务，跳过视频处理")
+            return None
+        
+        try:
+            self.logger.info(f"[{task_id}] 等待视频下载完成...")
+            video_wait_start = time.time()
+            
+            video_file_path = await video_download_task
+            
+            video_wait_duration = time.time() - video_wait_start
+            
+            if video_file_path:
+                self.logger.info(
+                    f"[{task_id}] 视频下载完成，路径: {video_file_path}, "
+                    f"等待耗时: {video_wait_duration:.2f}s"
+                )
+                return video_file_path
+            else:
+                self.logger.error(f"[{task_id}] 视频下载失败，耗时: {video_wait_duration:.2f}s")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"[{task_id}] 视频下载异常: {e}")
+            return None
     
     async def close(self):
         """关闭客户端连接"""

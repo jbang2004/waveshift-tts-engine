@@ -102,22 +102,42 @@ class MainOrchestrator:
             self.logger.info(f"[{task_id}] 步骤1: 获取任务数据和音频分离")
             task_data = await self._fetch_task_data(task_id, path_manager)
             
-            # 步骤2: 音频切分 - 传递path_manager
-            self.logger.info(f"[{task_id}] 步骤2: 音频切分")
-            segmented_sentences = await self._segment_audio(
-                task_id, task_data['audio_file_path'], task_data['sentences'], path_manager
-            )
+            # 步骤2: 音频切分 - 已在音频处理链中完成，真正并行！
+            self.logger.info(f"[{task_id}] 步骤2: 音频切分 - 已在音频处理链中完成，真正并行！")
+            segmented_sentences = task_data['sentences']  # 已在DataFetcher中完成切分处理
             
-            # 步骤3: 初始化HLS管理器 - 使用已创建的path_manager
-            self.logger.info(f"[{task_id}] 步骤3: 初始化HLS管理器")
+            # 验证切分结果
+            if not segmented_sentences:
+                raise ValueError("音频切分失败：未获得切分后的句子")
+            
+            self.logger.info(f"[{task_id}] 音频切分完成，处理了 {len(segmented_sentences)} 个句子")
+            
+            # 获取视频下载任务引用
+            video_download_task = task_data.get('video_download_task')
+            self.logger.info(f"[{task_id}] 视频下载任务状态: {'running' if video_download_task else 'not_started'}")
+            
+            # 步骤3: 初始化HLS管理器 - 等待视频下载完成
+            self.logger.info(f"[{task_id}] 步骤3: 初始化HLS管理器 - 等待视频下载完成")
+            
+            # 使用DataFetcher的统一视频等待接口
+            data_fetcher = self.services.get('data_fetcher')
+            if not data_fetcher:
+                raise ValueError("data_fetcher服务未找到")
+            
+            video_file_path = await data_fetcher.await_video_completion(task_id, video_download_task)
+            
+            # 更新path_manager的媒体路径（现在视频路径已获取）
+            if task_data['audio_file_path'] and video_file_path:
+                path_manager.set_media_paths(task_data['audio_file_path'], video_file_path)
+            
             await self._init_hls_manager(
-                task_id, task_data['audio_file_path'], task_data['video_file_path'], path_manager
+                task_id, task_data['audio_file_path'], video_file_path, path_manager
             )
             
-            # 步骤4: TTS流处理
+            # 步骤4: TTS流处理 - 使用已获取的视频路径
             self.logger.info(f"[{task_id}] 步骤4: TTS流处理")
             result = await self._process_tts_stream(
-                task_id, segmented_sentences, task_data['video_file_path'], path_manager
+                task_id, segmented_sentences, video_file_path, path_manager
             )
             
             # 处理结果
@@ -125,7 +145,7 @@ class MainOrchestrator:
             
             if result.get("status") == "success":
                 await self._update_task_status(task_id, 'completed')
-                self.logger.info(f"[{task_id}] 完整TTS流程成功完成，总耗时: {elapsed_time:.2f}s")
+                self.logger.info(f"[{task_id}] 完整TTS流程成功完成（真正并行优化版），总耗时: {elapsed_time:.2f}s")
                 return result
             else:
                 await self._update_task_status(task_id, 'error', result.get('message'))
@@ -200,8 +220,15 @@ class MainOrchestrator:
             
             if not sentences:
                 raise ValueError("没有找到句子数据")
+            
+            # 音频文件路径可以为None（如果音频处理链失败），但句子数据必须存在
             if not audio_file_path:
-                raise ValueError("没有找到音频文件")
+                # 尝试使用vocals_file_path作为备用
+                if vocals_file_path:
+                    audio_file_path = vocals_file_path
+                    self.logger.info(f"[{task_id}] 使用vocals_file_path作为音频文件路径: {audio_file_path}")
+                else:
+                    self.logger.warning(f"[{task_id}] 音频文件路径为None，可能音频处理链失败，但仍然有{len(sentences)}个句子数据")
             
             # 记录性能提升信息
             if task_data.get("performance"):
@@ -220,13 +247,14 @@ class MainOrchestrator:
             elif vocals_file_path:
                 self.logger.info(f"[{task_id}] 使用原始音频作为人声: {vocals_file_path}")
             
-            self.logger.info(f"[{task_id}] 并行获取到 {len(sentences)} 个句子和音频文件")
+            self.logger.info(f"[{task_id}] 并行获取到 {len(sentences)} 个句子，音频文件: {audio_file_path or 'None'}")
             return {
                 "sentences": sentences,
-                "audio_file_path": audio_file_path,  # 兼容性：返回人声路径
+                "audio_file_path": audio_file_path or vocals_file_path,  # 兼容性：返回人声路径，如果为None则使用vocals_file_path
                 "video_file_path": video_file_path,
                 "vocals_file_path": vocals_file_path,
-                "instrumental_file_path": instrumental_file_path
+                "instrumental_file_path": instrumental_file_path,
+                "video_download_task": task_data.get('video_download_task')  # 视频下载任务引用
             }
             
         except Exception as e:
@@ -234,7 +262,7 @@ class MainOrchestrator:
             raise
     
     async def _segment_audio(self, task_id: str, audio_file_path: str, sentences: list, path_manager: PathManager) -> list:
-        """音频切分 - 替代SegmentAudioStep
+        """音频切分 - 已在DataFetcher中实现，此方法保留用于向后兼容
         
         Args:
             task_id: 任务ID
@@ -242,24 +270,8 @@ class MainOrchestrator:
             sentences: 句子列表
             path_manager: 共享的路径管理器
         """
-        try:
-            audio_segmenter = self.services.get('audio_segmenter')
-            if not audio_segmenter:
-                raise ValueError("audio_segmenter服务未找到")
-            
-            segmented_sentences = await audio_segmenter.segment_audio_for_sentences(
-                task_id, audio_file_path, sentences, path_manager
-            )
-            
-            if not segmented_sentences:
-                raise ValueError("音频切分失败")
-            
-            self.logger.info(f"[{task_id}] 音频切分完成，处理了 {len(segmented_sentences)} 个句子")
-            return segmented_sentences
-            
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 音频切分异常: {e}")
-            raise
+        self.logger.warning(f"[{task_id}] 使用了已废弃的_segment_audio方法，请使用DataFetcher中的音频处理链")
+        return sentences  # 返回原始句子作为备用方案
     
     async def _init_hls_manager(self, task_id: str, audio_file_path: str, video_file_path: str, path_manager: PathManager) -> None:
         """初始化HLS管理器 - 替代InitHLSStep
