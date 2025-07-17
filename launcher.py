@@ -1,6 +1,5 @@
 import sys
 import logging
-import os
 from typing import Dict, Any
 from config import get_config, init_logging
 
@@ -16,13 +15,7 @@ from core.timeadjust.timestamp_adjuster import TimestampAdjuster
 from core.media_mixer import MediaMixer
 from core.hls_manager import HLSManager
 from orchestrator import MainOrchestrator
-from core.cloudflare.d1_client import D1Client
 from core.client_manager import ClientManager
-
-
-def is_local_environment():
-    """检测是否在本地环境中运行"""
-    return True
 
 
 def initialize_services(config) -> Dict[str, Any]:

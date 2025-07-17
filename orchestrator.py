@@ -10,7 +10,6 @@ import torch
 from typing import Dict, List, Tuple
 
 from config import get_config
-from core.cloudflare.d1_client import D1Client
 from utils.path_manager import PathManager
 from utils.async_utils import BackgroundTaskManager, async_retry
 
@@ -27,15 +26,10 @@ class MainOrchestrator:
         # 使用传入的服务实例
         self.services = services or {}
         
-        # 从服务管理器获取D1客户端
+        # 从服务字典获取D1客户端
         self.d1_client = self.services.get('d1_client')
         if not self.d1_client:
-            # 如果services中没有d1_client，创建一个（向后兼容）
-            self.d1_client = D1Client(
-                account_id=self.config.CLOUDFLARE_ACCOUNT_ID,
-                api_token=self.config.CLOUDFLARE_API_TOKEN,
-                database_id=self.config.CLOUDFLARE_D1_DATABASE_ID
-            )
+            raise RuntimeError("D1客户端未找到，请确保services字典中包含'd1_client'")
         
         # 直接使用服务实例（移除流水线框架）
         
