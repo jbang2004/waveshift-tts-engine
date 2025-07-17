@@ -20,9 +20,9 @@ from core.cloudflare.d1_client import D1Client
 from core.client_manager import ClientManager
 
 
-def is_fc_environment():
-    """检测是否在函数计算环境中运行"""
-    return os.getenv('FC_FUNC_CODE_PATH') is not None
+def is_local_environment():
+    """检测是否在本地环境中运行"""
+    return True
 
 
 def initialize_services(config) -> Dict[str, Any]:
