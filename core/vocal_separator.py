@@ -49,13 +49,31 @@ class VocalSeparator:
         
         # 初始化分离器
         try:
+            # 设置本地模型目录
+            model_dir_str = getattr(self.config, 'AUDIO_SEPARATOR_MODEL_DIR', None)
+            if model_dir_str:
+                model_dir = Path(model_dir_str)
+                if not model_dir.is_absolute():
+                    # 如果是相对路径，则相对于项目根目录
+                    model_dir = Path(__file__).parent.parent / model_dir_str
+                
+                if model_dir.exists():
+                    self.logger.info(f"使用本地模型目录: {model_dir}")
+                else:
+                    self.logger.warning(f"本地模型目录不存在: {model_dir}，将使用默认下载目录")
+                    model_dir = None
+            else:
+                model_dir = None
+                self.logger.info("未配置本地模型目录，将使用默认下载目录")
+            
             # 暂时禁用autocast避免API兼容性问题
             self.separator = Separator(
                 log_level=logging.INFO,
                 output_format=self.output_format,
                 sample_rate=self.sample_rate,
                 normalization_threshold=0.9,
-                use_autocast=False  # 暂时禁用autocast避免PyTorch版本兼容性问题
+                use_autocast=False,  # 暂时禁用autocast避免PyTorch版本兼容性问题
+                model_file_dir=str(model_dir) if model_dir else None  # 指定本地模型目录
             )
             
             # 预加载模型

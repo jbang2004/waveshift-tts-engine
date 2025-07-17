@@ -214,13 +214,29 @@ class AudioSegmenter:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
+        # 检查音频文件是否存在
+        audio_file = Path(audio_path)
+        if not audio_file.exists():
+            error_msg = f"音频文件不存在: {audio_path}"
+            self.logger.error(f"❌ {error_msg}")
+            raise FileNotFoundError(error_msg)
+        
+        if not audio_file.is_file():
+            error_msg = f"路径不是文件: {audio_path}"
+            self.logger.error(f"❌ {error_msg}")
+            raise ValueError(error_msg)
+        
         # 异步加载音频文件
-        self.logger.info(f"🎵 加载音频文件: {audio_path}")
+        file_size = audio_file.stat().st_size
+        self.logger.info(f"🎵 加载音频文件: {audio_path} (大小: {file_size/1024/1024:.1f}MB)")
+        
         try:
             audio = await asyncio.to_thread(AudioSegment.from_file, audio_path)
+            self.logger.info(f"✅ 音频文件加载成功，时长: {len(audio)/1000:.1f}秒")
         except Exception as e:
-            self.logger.error(f"❌ 加载音频文件失败: {e}")
-            return {}
+            error_msg = f"加载音频文件失败: {e}"
+            self.logger.error(f"❌ {error_msg}")
+            raise RuntimeError(error_msg) from e
         
         # 并行处理所有切片
         async def process_single_clip(clip_id: str, clip_info: Dict) -> Tuple[str, Optional[str]]:
@@ -358,13 +374,20 @@ class AudioSegmenter:
             audio_clips_dir = path_manager.temp.audio_prompts_dir
             
             # 提取并保存音频切片
-            clip_files = await self._extract_and_save_audio_clips(
-                audio_file_path, clips_library, str(audio_clips_dir)
-            )
-            
-            if not clip_files:
-                self.logger.error(f"[{task_id}] 音频切片提取失败")
-                return sentences
+            try:
+                clip_files = await self._extract_and_save_audio_clips(
+                    audio_file_path, clips_library, str(audio_clips_dir)
+                )
+                
+                if not clip_files:
+                    error_msg = f"音频切片提取失败：未生成任何切片文件"
+                    self.logger.error(f"[{task_id}] {error_msg}")
+                    raise ValueError(error_msg)
+                    
+            except Exception as e:
+                error_msg = f"音频切片提取异常: {e}"
+                self.logger.error(f"[{task_id}] {error_msg}")
+                raise RuntimeError(error_msg) from e
             
             # 映射切片到句子
             updated_sentences = self._map_clips_to_sentences(
@@ -377,4 +400,4 @@ class AudioSegmenter:
             return updated_sentences
         except Exception as e:
             self.logger.error(f"[{task_id}] 音频切片处理失败: {e}")
-            return []
+            raise

@@ -108,6 +108,7 @@ class AudioProcessingConfig:
     vocal_separation_output_format: str = field(default_factory=lambda: os.getenv("VOCAL_SEPARATION_OUTPUT_FORMAT", "WAV"))
     vocal_separation_sample_rate: int = field(default_factory=lambda: int(os.getenv("VOCAL_SEPARATION_SAMPLE_RATE", "24000")))
     vocal_separation_timeout: int = field(default_factory=lambda: int(os.getenv("VOCAL_SEPARATION_TIMEOUT", "300")))
+    audio_separator_model_dir: str = field(default_factory=lambda: os.getenv("AUDIO_SEPARATOR_MODEL_DIR", "models/audio-separator-models"))
     
     # 音频切片配置
     clip_goal_duration_ms: int = field(default_factory=lambda: int(os.getenv("AUDIO_CLIP_GOAL_DURATION_MS", "12000")))
@@ -246,6 +247,7 @@ class AppConfigMixin:
             'VOCAL_SEPARATION_OUTPUT_FORMAT': self.audio.vocal_separation_output_format,
             'VOCAL_SEPARATION_SAMPLE_RATE': self.audio.vocal_separation_sample_rate,
             'VOCAL_SEPARATION_TIMEOUT': self.audio.vocal_separation_timeout,
+            'AUDIO_SEPARATOR_MODEL_DIR': self.audio.audio_separator_model_dir,
             
             # 翻译配置
             'TRANSLATION_MODEL': self.translation.model,
