@@ -238,12 +238,12 @@ async def create_mixed_segment(
             logger.warning(f"[{task_id}] create_mixed_segment: 收到空的句子列表")
             return False, full_audio_buffer
 
-        full_audio = await asyncio.to_thread(_concat_audio_segments, sentences, full_audio_buffer, config.AUDIO_OVERLAP)
+        full_audio = _concat_audio_segments(sentences, full_audio_buffer, config.AUDIO_OVERLAP)
         if len(full_audio) == 0:
             logger.error(f"[{task_id}] create_mixed_segment: 没有有效的合成音频数据")
             return False, full_audio_buffer
 
-        start_time_param, duration = await asyncio.to_thread(_calculate_time_params, sentences)
+        start_time_param, duration = _calculate_time_params(sentences)
 
         if not media_files:
             logger.error(f"[{task_id}] create_mixed_segment: 找不到媒体文件信息")

@@ -298,15 +298,15 @@ class HLSManager:
                 except asyncio.QueueFull:
                     # 队列满时降级到同步上传
                     self.logger.warning(f"[{task_id}] 上传队列已满，降级到同步上传")
-                    await self._fallback_sync_upload_segments(task_id, segment_files)
+                    await self._fallback_upload_segments(task_id, segment_files)
             else:
                 # 没有队列时降级到同步上传
-                await self._fallback_sync_upload_segments(task_id, segment_files)
+                await self._fallback_upload_segments(task_id, segment_files)
                 
         except Exception as e:
             self.logger.error(f"[{task_id}] 队列段文件上传失败: {e}")
             # 降级到同步上传
-            await self._fallback_sync_upload_segments(task_id, segment_files)
+            await self._fallback_upload_segments(task_id, segment_files)
     
     async def _queue_playlist_upload(self, task_id: str) -> None:
         """
@@ -342,9 +342,9 @@ class HLSManager:
             # 降级到同步上传
             await self._upload_playlist_to_storage(task_id)
     
-    async def _fallback_sync_upload_segments(self, task_id: str, segment_files: List[str]) -> None:
+    async def _fallback_upload_segments(self, task_id: str, segment_files: List[str]) -> None:
         """
-        降级的同步段文件上传
+        降级的段文件上传
         
         Args:
             task_id: 任务ID

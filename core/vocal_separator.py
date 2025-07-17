@@ -128,7 +128,7 @@ class VocalSeparator:
             
             # 异步执行分离
             separation_result = await asyncio.wait_for(
-                self._separate_audio_async(audio_path, str(output_dir)),
+                asyncio.to_thread(self._separate_audio, audio_path, str(output_dir)),
                 timeout=self.timeout
             )
             
@@ -165,12 +165,8 @@ class VocalSeparator:
             # 清理内存
             self._cleanup_memory()
     
-    async def _separate_audio_async(self, audio_path: str, output_dir: str) -> Dict:
-        """异步执行音频分离"""
-        return await asyncio.to_thread(self._separate_audio_sync, audio_path, output_dir)
-    
-    def _separate_audio_sync(self, audio_path: str, output_dir: str) -> Dict:
-        """同步执行音频分离"""
+    def _separate_audio(self, audio_path: str, output_dir: str) -> Dict:
+        """执行音频分离"""
         try:
             # 执行分离
             output_files = self.separator.separate(audio_path)
