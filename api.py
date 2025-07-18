@@ -82,13 +82,9 @@ async def start_tts(task_id: str = Body(..., embed=True)):
         orchestrator = get_service('orchestrator')
         d1_client = get_service('d1_client')
         
-        # TTS任务错误处理器
+        # TTS任务错误处理器 - 统一状态更新由orchestrator负责
         async def tts_error_handler(e: Exception):
             logger.error(f"TTS流水线执行失败 [任务ID: {task_id}]: {e}", exc_info=True)
-            try:
-                await d1_client.update_task_status(task_id, 'error', str(e))
-            except Exception as db_error:
-                logger.error(f"更新任务状态失败 [任务ID: {task_id}]: {db_error}")
         
         # 创建后台任务
         task_manager.create_task(

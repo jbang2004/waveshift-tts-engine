@@ -367,10 +367,6 @@ class DataFetcher:
             self.logger.error(f"[{task_id}] 获取句子数据失败: {e}")
             return []
     
-    async def update_task_status(self, task_id: str, status: str, error_message: str = None, 
-                               hls_playlist_url: str = None) -> bool:
-        """更新任务状态"""
-        return await self.d1_client.update_task_status(task_id, status, error_message, hls_playlist_url)
     
     async def await_video_completion(self, task_id: str, video_download_task) -> str:
         """

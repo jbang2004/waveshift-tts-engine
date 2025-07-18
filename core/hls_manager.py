@@ -128,17 +128,21 @@ class HLSManager:
             except Exception as e:
                 error_message = f"为任务 {task_id} 创建HLS管理器失败: {e}"
                 self.logger.error(error_message)
-                # Update D1 task status to error
-                try:
-                    asyncio.create_task(self.d1_client.update_task_status(task_id, 'error', f"HLS管理器初始化失败: {e}"))
-                except Exception as db_update_e:
-                    self.logger.error(f"任务 {task_id}: 更新数据库状态失败 (HLS创建失败时): {db_update_e}")
 
                 # 清理已创建的部分资源
                 if task_id in self.task_managers:
                     del self.task_managers[task_id]
                 if task_id in self.locks:
                     del self.locks[task_id]
+                    
+                # 清理可能已创建的上传工作器和队列
+                if task_id in self.upload_workers:
+                    worker = self.upload_workers[task_id]
+                    worker.cancel()  # 取消未完成的工作器
+                    del self.upload_workers[task_id]
+                    
+                if task_id in self.upload_queues:
+                    del self.upload_queues[task_id]
                 return {"status": "error", "message": f"创建HLS管理器失败: {str(e)}"}
 
     async def _init_parallel_upload(self, task_id: str) -> None:
@@ -495,13 +499,7 @@ class HLSManager:
                 
                 # 更新数据库中的HLS播放列表URL为R2的公共URL
                 storage_url = upload_result["public_url"]
-                try:
-                    asyncio.create_task(self.d1_client.update_task_status(
-                        task_id, 'processing'
-                    ))
-                    self.logger.info(f"[{task_id}] 任务状态已更新，HLS播放列表已上传到R2: {storage_url}")
-                except Exception as update_e:
-                    self.logger.error(f"[{task_id}] 更新任务状态失败: {update_e}")
+                self.logger.info(f"[{task_id}] HLS播放列表已上传到R2: {storage_url}")
             else:
                 self.logger.error(f"[{task_id}] 播放列表上传到R2失败: {upload_result.get('message', 'Unknown error')}")
                 
