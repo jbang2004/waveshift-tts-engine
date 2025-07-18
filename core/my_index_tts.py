@@ -97,14 +97,21 @@ class MyIndexTTSDeployment:
         batch = []
         for sentence in sentences:
             try:
-                async with self._lock:
-                    res = await asyncio.to_thread(
-                        self.tts_model.infer,
-                        sentence.audio,
-                        sentence.translated_text,
-                        None,
-                        False
-                    )
+                # 验证音频文件路径
+                if not sentence.audio or sentence.audio == "." or not os.path.exists(sentence.audio):
+                    logger.error(f"TTS 错误：句子 {sentence.sequence}，音频文件路径无效: '{sentence.audio}'")
+                    logger.error(f"句子详情：text='{sentence.translated_text[:50]}...', speaker='{sentence.speaker}'")
+                    res = None
+                else:
+                    logger.debug(f"TTS 处理句子 {sentence.sequence}，音频路径: {sentence.audio}")
+                    async with self._lock:
+                        res = await asyncio.to_thread(
+                            self.tts_model.infer,
+                            sentence.audio,
+                            sentence.translated_text,
+                            None,
+                            False
+                        )
             except Exception as e:
                 logger.error(f"TTS 错误：句子 {sentence.sequence}，{e}")
                 res = None

@@ -330,7 +330,19 @@ class AudioSegmenter:
                 
                 self.logger.debug(f"句子 {sentence.sequence} 映射到切片 {clip_id}")
             else:
-                self.logger.warning(f"句子 {sentence.sequence} 未找到对应的音频切片")
+                # 找不到对应切片时，尝试使用其他可用的切片作为替代
+                if clip_files:
+                    # 使用第一个可用的切片作为备用
+                    fallback_clip_id = next(iter(clip_files.keys()))
+                    fallback_clip_path = clip_files[fallback_clip_id]
+                    sentence.audio = fallback_clip_path
+                    
+                    # 使用默认的语音时长
+                    sentence.speech_duration = 2.0  # 默认2秒
+                    
+                    self.logger.warning(f"句子 {sentence.sequence} 未找到对应的音频切片，使用备用切片 {fallback_clip_id}")
+                else:
+                    self.logger.error(f"句子 {sentence.sequence} 未找到音频切片且无备用切片可用")
             
             updated_sentences.append(sentence)
         
