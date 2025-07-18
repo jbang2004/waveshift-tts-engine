@@ -191,6 +191,12 @@ class RuntimeConfig:
     tts_batch_size: int = field(default_factory=lambda: int(os.getenv("TTS_BATCH_SIZE", "3")))
     max_parallel_segments: int = field(default_factory=lambda: int(os.getenv("MAX_PARALLEL_SEGMENTS", "2")))
     
+    # 流式处理配置
+    tts_queue_size: int = field(default_factory=lambda: int(os.getenv("TTS_QUEUE_SIZE", "20")))
+    aligned_queue_size: int = field(default_factory=lambda: int(os.getenv("ALIGNED_QUEUE_SIZE", "20")))
+    preprocess_timeout: int = field(default_factory=lambda: int(os.getenv("PREPROCESS_TIMEOUT", "300")))
+    compose_timeout: int = field(default_factory=lambda: int(os.getenv("COMPOSE_TIMEOUT", "600")))
+    
     # 资源配置
     simplifier_actor_num_cpus: float = field(default_factory=lambda: float(os.getenv("SIMPLIFIER_ACTOR_NUM_CPUS", "0.5")))
     media_mixer_actor_num_cpus: float = field(default_factory=lambda: float(os.getenv("MEDIA_MIXER_ACTOR_NUM_CPUS", "0.5")))
@@ -262,6 +268,12 @@ class AppConfigMixin:
             'MAX_PARALLEL_SEGMENTS': self.runtime.max_parallel_segments,
             'SIMPLIFIER_ACTOR_NUM_CPUS': self.runtime.simplifier_actor_num_cpus,
             'MEDIA_MIXER_ACTOR_NUM_CPUS': self.runtime.media_mixer_actor_num_cpus,
+            
+            # 流式处理配置
+            'TTS_QUEUE_SIZE': self.runtime.tts_queue_size,
+            'ALIGNED_QUEUE_SIZE': self.runtime.aligned_queue_size,
+            'PREPROCESS_TIMEOUT': self.runtime.preprocess_timeout,
+            'COMPOSE_TIMEOUT': self.runtime.compose_timeout,
             
             # 内存配置
             'MAX_BUFFER_DURATION': self.memory.max_buffer_duration,
