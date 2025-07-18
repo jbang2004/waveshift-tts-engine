@@ -120,9 +120,9 @@ class MainOrchestrator:
             
             self.logger.info(f"[{task_id}] 视频下载任务状态: {'running' if video_download_task else 'not_started'}")
             
-            # 步骤3: 智能并行策略 - 启动TTS的同时准备视频
-            self.logger.info(f"[{task_id}] 步骤3: 智能并行策略 - TTS生成与视频下载重叠执行")
-            result = await self._process_tts_stream_smart_parallel(
+            # 步骤3: TTS并行处理 - TTS生成与视频下载重叠执行
+            self.logger.info(f"[{task_id}] 步骤3: TTS并行处理")
+            result = await self._process_tts_stream(
                 task_id, segmented_sentences, task_data['audio_file_path'], 
                 video_download_task, data_fetcher, path_manager
             )
@@ -290,92 +290,10 @@ class MainOrchestrator:
             self.logger.error(f"[{task_id}] 初始化HLS管理器异常: {e}")
             raise
     
-    async def _process_tts_stream_parallel(self, task_id: str, sentences: list, audio_file_path: str, 
-                                          video_download_task, data_fetcher, path_manager: PathManager) -> Dict:
-        """TTS流处理 - 真正并行版本：TTS与视频下载并行，只在MediaMixer阶段等待视频完成"""
-        try:
-            # 获取服务实例
-            tts = self.services.get('tts')
-            duration_aligner = self.services.get('duration_aligner')
-            timestamp_adjuster = self.services.get('timestamp_adjuster')
-            media_mixer = self.services.get('media_mixer')
-            hls_manager = self.services.get('hls_manager')
-            
-            if not all([tts, duration_aligner, timestamp_adjuster, media_mixer, hls_manager]):
-                raise ValueError("TTS服务实例未完整找到")
-            
-            self.logger.info(f"[{task_id}] 启动真正并行TTS流处理，句子数: {len(sentences)}")
-            
-            # 创建异步队列，设置最大容量避免内存堆积
-            tts_queue = asyncio.Queue(maxsize=5)  # 最多缓存5个批次
-            
-            # 并发启动TTS生产者和处理消费者
-            producer_task = asyncio.create_task(
-                self._tts_producer(task_id, tts, sentences, path_manager, tts_queue),
-                name=f"tts_producer_{task_id}"
-            )
-            
-            consumer_task = asyncio.create_task(
-                self._processing_consumer_parallel(
-                    task_id, tts_queue, audio_file_path, video_download_task, 
-                    data_fetcher, path_manager, duration_aligner, timestamp_adjuster, 
-                    media_mixer, hls_manager
-                ),
-                name=f"processing_consumer_parallel_{task_id}"
-            )
-            
-            # 等待两个任务完成，添加并发监控
-            self.logger.info(f"[{task_id}] TTS生产者和并行处理消费者并发启动")
-            concurrent_start_time = time.time()
-            
-            # 使用gather监控并发执行
-            producer_result, consumer_result = await asyncio.gather(
-                producer_task, consumer_task, return_exceptions=True
-            )
-            
-            concurrent_duration = time.time() - concurrent_start_time
-            self.logger.info(f"[{task_id}] 真正并行处理完成，总耗时: {concurrent_duration:.2f}s")
-            
-            # 检查结果
-            if isinstance(producer_result, Exception):
-                self.logger.error(f"[{task_id}] TTS生产者异常: {producer_result}")
-                return {"status": "error", "message": f"TTS生产失败: {producer_result}"}
-            
-            if isinstance(consumer_result, Exception):
-                self.logger.error(f"[{task_id}] 处理消费者异常: {consumer_result}")
-                return {"status": "error", "message": f"后续处理失败: {consumer_result}"}
-            
-            # 获取消费者结果
-            success, processed_segment_paths, added_hls_segments = consumer_result
-            
-            if not success:
-                return {"status": "error", "message": "批次处理失败"}
-            
-            self.logger.info(f"[{task_id}] 真正并行处理完成，共生成 {added_hls_segments} 个HLS段")
-            
-            # HLS最终化
-            self.logger.info(f"[{task_id}] 开始HLS最终化处理")
-            result = await hls_manager.finalize_merge(
-                task_id=task_id,
-                all_processed_segment_paths=processed_segment_paths,
-                path_manager=path_manager
-            )
-            
-            if result and result.get("status") == "success":
-                self.logger.info(f"[{task_id}] HLS最终化成功，真正并行流程完成")
-                return result
-            else:
-                err_msg = result.get('message') if result else '无效的最终化结果'
-                self.logger.error(f"[{task_id}] HLS最终化失败: {err_msg}")
-                return {"status": "error", "message": err_msg}
-                
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 真正并行TTS流处理异常: {e}")
-            return {"status": "error", "message": f"TTS流处理失败: {e}"}
 
-    async def _process_tts_stream_smart_parallel(self, task_id: str, sentences: list, audio_file_path: str, 
-                                              video_download_task, data_fetcher, path_manager: PathManager) -> Dict:
-        """TTS流处理 - 智能并行版本：解决队列串行阻塞问题"""
+    async def _process_tts_stream(self, task_id: str, sentences: list, audio_file_path: str, 
+                                video_download_task, data_fetcher, path_manager: PathManager) -> Dict:
+        """TTS并行流处理 - TTS生成与视频下载重叠执行"""
         try:
             # 获取服务实例
             tts = self.services.get('tts')
@@ -387,12 +305,12 @@ class MainOrchestrator:
             if not all([tts, duration_aligner, timestamp_adjuster, media_mixer, hls_manager]):
                 raise ValueError("TTS服务实例未完整找到")
             
-            self.logger.info(f"[{task_id}] 启动智能并行TTS流处理，句子数: {len(sentences)}")
+            self.logger.info(f"[{task_id}] 启动TTS并行处理，句子数: {len(sentences)}")
             
             # 创建异步队列，设置最大容量避免内存堆积
             tts_queue = asyncio.Queue(maxsize=10)  # 增大队列容量
             
-            # 并发启动三个任务：TTS生产者、视频获取、智能消费者
+            # 并发启动三个任务：TTS生产者、视频准备、处理消费者
             producer_task = asyncio.create_task(
                 self._tts_producer(task_id, tts, sentences, path_manager, tts_queue),
                 name=f"tts_producer_{task_id}"
@@ -405,17 +323,17 @@ class MainOrchestrator:
                 name=f"video_preparation_{task_id}"
             )
             
-            # 智能消费者等待视频准备好后开始处理
+            # 处理消费者等待视频准备好后开始处理
             consumer_task = asyncio.create_task(
-                self._smart_processing_consumer(
+                self._tts_consumer(
                     task_id, tts_queue, video_task, path_manager,
                     duration_aligner, timestamp_adjuster, media_mixer, hls_manager
                 ),
-                name=f"smart_consumer_{task_id}"
+                name=f"tts_consumer_{task_id}"
             )
             
             # 等待所有任务完成
-            self.logger.info(f"[{task_id}] TTS生产者、视频准备、智能消费者三路并发启动")
+            self.logger.info(f"[{task_id}] TTS生产者、视频准备、处理消费者三路并发启动")
             concurrent_start_time = time.time()
             
             # 使用gather监控并发执行
@@ -424,7 +342,7 @@ class MainOrchestrator:
             )
             
             concurrent_duration = time.time() - concurrent_start_time
-            self.logger.info(f"[{task_id}] 智能并行处理完成，总耗时: {concurrent_duration:.2f}s")
+            self.logger.info(f"[{task_id}] 并行处理完成，耗时: {concurrent_duration:.2f}s")
             
             # 检查结果
             if isinstance(producer_result, Exception):
@@ -445,7 +363,7 @@ class MainOrchestrator:
             if not success:
                 return {"status": "error", "message": "批次处理失败"}
             
-            self.logger.info(f"[{task_id}] 智能并行处理完成，共生成 {added_hls_segments} 个HLS段")
+            self.logger.info(f"[{task_id}] 并行处理完成，共生成 {added_hls_segments} 个HLS段")
             
             # HLS最终化
             self.logger.info(f"[{task_id}] 开始HLS最终化处理")
@@ -456,7 +374,7 @@ class MainOrchestrator:
             )
             
             if result and result.get("status") == "success":
-                self.logger.info(f"[{task_id}] HLS最终化成功，智能并行流程完成")
+                self.logger.info(f"[{task_id}] HLS最终化成功，并行流程完成")
                 return result
             else:
                 err_msg = result.get('message') if result else '无效的最终化结果'
@@ -464,196 +382,9 @@ class MainOrchestrator:
                 return {"status": "error", "message": err_msg}
                 
         except Exception as e:
-            self.logger.error(f"[{task_id}] 智能并行TTS流处理异常: {e}")
+            self.logger.error(f"[{task_id}] TTS并行处理异常: {e}")
             return {"status": "error", "message": f"TTS流处理失败: {e}"}
 
-    async def _process_tts_stream(self, task_id: str, sentences: list, video_file_path: str, path_manager: PathManager) -> Dict:
-        """TTS流处理 - 使用生产者-消费者模式解耦TTS生成与后续处理"""
-        try:
-            # 获取服务实例
-            tts = self.services.get('tts')
-            duration_aligner = self.services.get('duration_aligner')
-            timestamp_adjuster = self.services.get('timestamp_adjuster')
-            media_mixer = self.services.get('media_mixer')
-            hls_manager = self.services.get('hls_manager')
-            
-            if not all([tts, duration_aligner, timestamp_adjuster, media_mixer, hls_manager]):
-                raise ValueError("TTS服务实例未完整找到")
-            
-            self.logger.info(f"[{task_id}] 启动解耦TTS流处理，句子数: {len(sentences)}")
-            
-            # 创建异步队列，设置最大容量避免内存堆积
-            tts_queue = asyncio.Queue(maxsize=5)  # 最多缓存5个批次
-            
-            # 并发启动TTS生产者和处理消费者
-            producer_task = asyncio.create_task(
-                self._tts_producer(task_id, tts, sentences, path_manager, tts_queue),
-                name=f"tts_producer_{task_id}"
-            )
-            
-            consumer_task = asyncio.create_task(
-                self._processing_consumer(
-                    task_id, tts_queue, video_file_path, path_manager,
-                    duration_aligner, timestamp_adjuster, media_mixer, hls_manager
-                ),
-                name=f"processing_consumer_{task_id}"
-            )
-            
-            # 等待两个任务完成，添加并发监控
-            self.logger.info(f"[{task_id}] TTS生产者和处理消费者并发启动")
-            concurrent_start_time = time.time()
-            
-            # 使用gather监控并发执行
-            producer_result, consumer_result = await asyncio.gather(
-                producer_task, consumer_task, return_exceptions=True
-            )
-            
-            concurrent_duration = time.time() - concurrent_start_time
-            self.logger.info(f"[{task_id}] 并发处理完成，总耗时: {concurrent_duration:.2f}s")
-            
-            # 检查结果
-            if isinstance(producer_result, Exception):
-                self.logger.error(f"[{task_id}] TTS生产者异常: {producer_result}")
-                return {"status": "error", "message": f"TTS生产失败: {producer_result}"}
-            
-            if isinstance(consumer_result, Exception):
-                self.logger.error(f"[{task_id}] 处理消费者异常: {consumer_result}")
-                return {"status": "error", "message": f"后续处理失败: {consumer_result}"}
-            
-            # 获取消费者结果
-            success, processed_segment_paths, added_hls_segments = consumer_result
-            
-            if not success:
-                return {"status": "error", "message": "批次处理失败"}
-            
-            self.logger.info(f"[{task_id}] 并发处理完成，共生成 {added_hls_segments} 个HLS段")
-            
-            # HLS最终化
-            self.logger.info(f"[{task_id}] 开始HLS最终化处理")
-            result = await hls_manager.finalize_merge(
-                task_id=task_id,
-                all_processed_segment_paths=processed_segment_paths,
-                path_manager=path_manager
-            )
-            
-            if result and result.get("status") == "success":
-                self.logger.info(f"[{task_id}] HLS最终化成功，解耦流程完成")
-                return result
-            else:
-                err_msg = result.get('message') if result else '无效的最终化结果'
-                self.logger.error(f"[{task_id}] HLS最终化失败: {err_msg}")
-                return {"status": "error", "message": err_msg}
-                
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 解耦TTS流处理异常: {e}")
-            return {"status": "error", "message": f"TTS流处理失败: {e}"}
-    
-    async def _process_single_batch_parallel(self, task_id: str, batch: list, batch_counter: int,
-                                        current_time_ms: float, audio_file_path: str, video_download_task,
-                                        data_fetcher, path_manager: PathManager, duration_aligner, 
-                                        timestamp_adjuster, media_mixer, hls_manager, 
-                                        video_file_path: str = None, hls_initialized: bool = False) -> Dict:
-        """处理单个TTS批次 - 并行版本：只在MediaMixer阶段等待视频下载完成"""
-        try:
-            self.logger.info(f"[{task_id}] 并行处理批次 {batch_counter} - TTS、对齐、调整可立即开始")
-            
-            # 阶段1: 时长对齐 - 不需要视频，立即执行
-            align_start_time = time.time()
-            aligned_batch = await duration_aligner(batch, max_speed=1.2, path_manager=path_manager)
-            if not aligned_batch:
-                self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时长对齐失败")
-                return {"success": False}
-            align_duration = time.time() - align_start_time
-            self.logger.info(f"[{task_id}] 批次 {batch_counter} 时长对齐完成，耗时: {align_duration:.2f}s")
-                
-            # 阶段2: 时间戳调整 - 不需要视频，立即执行
-            adjust_start_time = time.time()
-            adjusted_batch = await timestamp_adjuster(
-                aligned_batch, self.config.TARGET_SR, current_time_ms
-            )
-            if not adjusted_batch:
-                self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时间戳调整失败")
-                return {"success": False}
-            adjust_duration = time.time() - adjust_start_time
-            self.logger.info(f"[{task_id}] 批次 {batch_counter} 时间戳调整完成，耗时: {adjust_duration:.2f}s")
-                
-            # 计算新的时间位置
-            last_sentence = adjusted_batch[-1]
-            new_time_ms = last_sentence.adjusted_start + last_sentence.adjusted_duration
-            
-            # 阶段3: 视频等待和HLS初始化 - 只在这里等待视频下载完成！
-            if not video_file_path:
-                self.logger.info(f"[{task_id}] 批次 {batch_counter} 需要视频文件，开始等待视频下载完成...")
-                video_wait_start_time = time.time()
-                
-                video_file_path = await data_fetcher.await_video_completion(task_id, video_download_task)
-                if not video_file_path:
-                    self.logger.error(f"[{task_id}] 批次 {batch_counter} 视频下载失败")
-                    return {"success": False}
-                    
-                video_wait_duration = time.time() - video_wait_start_time
-                self.logger.info(
-                    f"[{task_id}] 批次 {batch_counter} 视频文件获取完成: {video_file_path}，"
-                    f"等待耗时: {video_wait_duration:.2f}s"
-                )
-                
-                # 更新path_manager的媒体路径
-                path_manager.set_media_paths(audio_file_path, video_file_path)
-                
-            # 阶段4: HLS管理器动态初始化 - 只在第一次需要时初始化
-            if not hls_initialized:
-                self.logger.info(f"[{task_id}] 批次 {batch_counter} 初始化HLS管理器...")
-                hls_init_start_time = time.time()
-                
-                await self._init_hls_manager(task_id, audio_file_path, video_file_path, path_manager)
-                hls_initialized = True
-                
-                hls_init_duration = time.time() - hls_init_start_time
-                self.logger.info(
-                    f"[{task_id}] 批次 {batch_counter} HLS管理器初始化完成，"
-                    f"耗时: {hls_init_duration:.2f}s"
-                )
-            
-            # 阶段5: 媒体混合 - 现在有了视频文件，可以执行混合
-            mixer_start_time = time.time()
-            segment_path = await media_mixer.mix_media(
-                sentences_batch=adjusted_batch,
-                path_manager=path_manager,
-                batch_counter=batch_counter,
-                task_id=task_id
-            )
-            
-            if not segment_path:
-                self.logger.warning(f"[{task_id}] 批次 {batch_counter} 媒体混合失败")
-                return {"success": False}
-            
-            mixer_duration = time.time() - mixer_start_time
-            self.logger.info(f"[{task_id}] 批次 {batch_counter} 媒体混合完成，耗时: {mixer_duration:.2f}s")
-                
-            # 阶段6: 添加HLS段
-            hls_start_time = time.time()
-            hls_result = await hls_manager.add_segment(
-                task_id, segment_path, batch_counter + 1
-            )
-            
-            if hls_result and hls_result.get("status") == "success":
-                hls_duration = time.time() - hls_start_time
-                self.logger.info(f"[{task_id}] 批次 {batch_counter} HLS段添加完成，耗时: {hls_duration:.2f}s")
-                
-                return {
-                    "success": True,
-                    "segment_path": segment_path, 
-                    "new_time_ms": new_time_ms,
-                    "video_file_path": video_file_path,
-                    "hls_initialized": hls_initialized
-                }
-            else:
-                self.logger.error(f"[{task_id}] 添加HLS段失败: {hls_result.get('message') if hls_result else 'Unknown error'}")
-                return {"success": False}
-                
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 并行处理批次 {batch_counter} 异常: {e}")
-            return {"success": False}
 
     async def _prepare_video_for_processing(self, task_id: str, video_download_task, data_fetcher,
                                           audio_file_path: str, path_manager: PathManager) -> str:
@@ -694,25 +425,10 @@ class MainOrchestrator:
             self.logger.error(f"[{task_id}] 视频准备异常: {e}")
             raise
 
-    async def _smart_processing_consumer(self, task_id: str, tts_queue: asyncio.Queue, video_task,
-                                       path_manager: PathManager, duration_aligner, timestamp_adjuster, 
-                                       media_mixer, hls_manager) -> Tuple[bool, List[str], int]:
-        """
-        智能处理消费者协程 - 等待视频准备好后开始无阻塞批次处理
-        
-        Args:
-            task_id: 任务ID
-            tts_queue: TTS队列
-            video_task: 视频准备任务
-            path_manager: 路径管理器
-            duration_aligner: 时长对齐器
-            timestamp_adjuster: 时间戳调整器
-            media_mixer: 媒体混合器
-            hls_manager: HLS管理器
-            
-        Returns:
-            Tuple[bool, List[str], int]: (是否成功, 处理的段路径列表, HLS段数量)
-        """
+    async def _tts_consumer(self, task_id: str, tts_queue: asyncio.Queue, video_task,
+                          path_manager: PathManager, duration_aligner, timestamp_adjuster, 
+                          media_mixer, hls_manager) -> Tuple[bool, List[str], int]:
+        """TTS消费者 - 缓存TTS批次，等待视频准备完成后批量处理"""
         start_time = time.time()
         processed_segment_paths = []
         added_hls_segments = 0
@@ -725,7 +441,7 @@ class MainOrchestrator:
         cached_batches = []
         
         try:
-            self.logger.info(f"[{task_id}] 智能消费者启动 - 将缓存TTS批次直到视频准备完成")
+            self.logger.info(f"[{task_id}] TTS消费者启动")
             
             # 阶段1: 缓存TTS批次阶段
             tts_complete = False
@@ -834,7 +550,7 @@ class MainOrchestrator:
                     )
                     
                     # 无阻塞处理（视频已准备好）
-                    batch_result = await self._process_single_batch_smart(
+                    batch_result = await self._process_batch(
                         task_id, tts_batch, batch_counter, current_audio_time_ms,
                         video_file_path, path_manager, duration_aligner, timestamp_adjuster, 
                         media_mixer, hls_manager
@@ -906,7 +622,7 @@ class MainOrchestrator:
                         tts_batch = queue_item['data']
                         batch_counter = queue_item['batch_counter']
                         
-                        batch_result = await self._process_single_batch_smart(
+                        batch_result = await self._process_batch(
                             task_id, tts_batch, batch_counter, current_audio_time_ms,
                             video_file_path, path_manager, duration_aligner, timestamp_adjuster, 
                             media_mixer, hls_manager
@@ -932,24 +648,20 @@ class MainOrchestrator:
             total_duration = time.time() - start_time
             success_rate = ((added_hls_segments) / (added_hls_segments + failed_batches) * 100) if (added_hls_segments + failed_batches) > 0 else 0
             
-            self.logger.info(
-                f"[{task_id}] 智能消费者完成 - "
-                f"成功段数: {added_hls_segments}, 失败批次: {failed_batches}, "
-                f"成功率: {success_rate:.1f}%, 总耗时: {total_duration:.2f}s"
-            )
+            self.logger.info(f"[{task_id}] TTS消费完成 - 成功: {added_hls_segments}, 失败: {failed_batches}, 耗时: {total_duration:.1f}s")
             
             return True, processed_segment_paths, added_hls_segments
             
         except Exception as e:
-            self.logger.error(f"[{task_id}] 智能消费者严重异常: {e}", exc_info=True)
+            self.logger.error(f"[{task_id}] TTS消费者异常: {e}")
             return False, processed_segment_paths, added_hls_segments
 
-    async def _process_single_batch_smart(self, task_id: str, batch: list, batch_counter: int,
-                                        current_time_ms: float, video_file_path: str, path_manager: PathManager,
-                                        duration_aligner, timestamp_adjuster, media_mixer, hls_manager) -> Dict:
-        """处理单个TTS批次 - 智能版本：视频已准备好，无阻塞处理"""
+    async def _process_batch(self, task_id: str, batch: list, batch_counter: int,
+                           current_time_ms: float, video_file_path: str, path_manager: PathManager,
+                           duration_aligner, timestamp_adjuster, media_mixer, hls_manager) -> Dict:
+        """处理TTS批次 - 无阻塞执行"""
         try:
-            self.logger.info(f"[{task_id}] 智能处理批次 {batch_counter} - 视频已准备，无阻塞执行")
+            self.logger.debug(f"[{task_id}] 处理批次 {batch_counter}")
             
             # 阶段1: 时长对齐
             align_start_time = time.time()
@@ -1007,81 +719,23 @@ class MainOrchestrator:
                     "new_time_ms": new_time_ms
                 }
             else:
-                self.logger.error(f"[{task_id}] 批次 {batch_counter} 添加HLS段失败: {hls_result.get('message') if hls_result else 'Unknown error'}")
+                self.logger.error(f"[{task_id}] 批次 {batch_counter} HLS段添加失败")
                 return {"success": False}
                 
         except Exception as e:
-            self.logger.error(f"[{task_id}] 智能处理批次 {batch_counter} 异常: {e}")
+            self.logger.error(f"[{task_id}] 处理批次 {batch_counter} 异常: {e}")
             return {"success": False}
 
-    async def _process_single_batch(self, task_id: str, batch: list, batch_counter: int,
-                                  current_time_ms: float, video_file_path: str, path_manager: PathManager,
-                                  duration_aligner, timestamp_adjuster, media_mixer, hls_manager) -> Dict:
-        """处理单个TTS批次"""
-        try:
-            # 时长对齐 - 传递path_manager
-            aligned_batch = await duration_aligner(batch, max_speed=1.2, path_manager=path_manager)
-            if not aligned_batch:
-                self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时长对齐失败")
-                return None
-                
-            # 时间戳调整
-            adjusted_batch = await timestamp_adjuster(
-                aligned_batch, self.config.TARGET_SR, current_time_ms
-            )
-            if not adjusted_batch:
-                self.logger.warning(f"[{task_id}] 批次 {batch_counter} 时间戳调整失败")
-                return None
-                
-            # 计算新的时间位置
-            last_sentence = adjusted_batch[-1]
-            new_time_ms = last_sentence.adjusted_start + last_sentence.adjusted_duration
-            
-            # 媒体混合
-            segment_path = await media_mixer.mix_media(
-                sentences_batch=adjusted_batch,
-                path_manager=path_manager,
-                batch_counter=batch_counter,
-                task_id=task_id
-            )
-            
-            if not segment_path:
-                self.logger.warning(f"[{task_id}] 批次 {batch_counter} 媒体混合失败")
-                return None
-                
-            # 添加HLS段
-            hls_result = await hls_manager.add_segment(
-                task_id, segment_path, batch_counter + 1
-            )
-            
-            if hls_result and hls_result.get("status") == "success":
-                return {"segment_path": segment_path, "new_time_ms": new_time_ms}
-            else:
-                self.logger.error(f"[{task_id}] 添加HLS段失败: {hls_result.get('message')}")
-                return None
-                
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 处理批次 {batch_counter} 异常: {e}")
-            return None
 
     async def _tts_producer(self, task_id: str, tts_service, sentences: List, path_manager: PathManager, 
                            tts_queue: asyncio.Queue) -> None:
-        """
-        TTS生产者协程 - 专门负责TTS音频生成，将完成的批次放入队列
-        
-        Args:
-            task_id: 任务ID
-            tts_service: TTS服务实例
-            sentences: 句子列表
-            path_manager: 路径管理器
-            tts_queue: 异步队列，用于传递TTS完成的批次
-        """
+        """TTS生产者 - 生成音频并放入队列"""
         start_time = time.time()
         batch_counter = 0
         failed_batches = 0
         
         try:
-            self.logger.info(f"[{task_id}] TTS生产者启动，待处理句子数: {len(sentences)}")
+            self.logger.info(f"[{task_id}] TTS生产者启动，句子数: {len(sentences)}")
             
             # 使用TTS生成器逐批次生成音频
             async for tts_batch in tts_service.generate_audio_stream(sentences, path_manager):
@@ -1098,10 +752,7 @@ class MainOrchestrator:
                             f"{len(valid_sentences)}/{len(tts_batch)} 个句子生成成功"
                         )
                     
-                    self.logger.info(
-                        f"[{task_id}] TTS生产者完成批次 {batch_counter}，"
-                        f"包含 {len(tts_batch)} 个句子，队列大小: {tts_queue.qsize()}"
-                    )
+                    self.logger.debug(f"[{task_id}] TTS批次 {batch_counter} 完成，句子: {len(tts_batch)}")
                     
                     # 将完成的TTS批次放入队列
                     await tts_queue.put({
@@ -1113,10 +764,6 @@ class MainOrchestrator:
                     batch_duration = time.time() - batch_start_time
                     batch_counter += 1
                     
-                    self.logger.info(
-                        f"[{task_id}] TTS生产者批次 {batch_counter-1} 入队完成，"
-                        f"耗时: {batch_duration:.2f}s"
-                    )
                     
                 except Exception as e:
                     failed_batches += 1
@@ -1133,14 +780,10 @@ class MainOrchestrator:
             total_duration = time.time() - start_time
             success_rate = (batch_counter / (batch_counter + failed_batches) * 100) if (batch_counter + failed_batches) > 0 else 0
             
-            self.logger.info(
-                f"[{task_id}] TTS生产者完成 - "
-                f"成功批次: {batch_counter}, 失败批次: {failed_batches}, "
-                f"成功率: {success_rate:.1f}%, 总耗时: {total_duration:.2f}s"
-            )
+            self.logger.info(f"[{task_id}] TTS生产完成 - 成功: {batch_counter}, 失败: {failed_batches}, 耗时: {total_duration:.1f}s")
             
         except Exception as e:
-            self.logger.error(f"[{task_id}] TTS生产者严重异常: {e}", exc_info=True)
+            self.logger.error(f"[{task_id}] TTS生产异常: {e}")
             # 发送错误信号
             try:
                 await tts_queue.put({'type': 'error', 'message': str(e)})
@@ -1148,228 +791,4 @@ class MainOrchestrator:
                 self.logger.error(f"[{task_id}] 无法发送错误信号到队列")
             raise
 
-    async def _processing_consumer_parallel(self, task_id: str, tts_queue: asyncio.Queue, 
-                                           audio_file_path: str, video_download_task, data_fetcher,
-                                           path_manager: PathManager, duration_aligner, timestamp_adjuster, 
-                                           media_mixer, hls_manager) -> Tuple[bool, List[str], int]:
-        """
-        并行处理消费者协程 - TTS与视频下载真正并行，只在MediaMixer阶段等待视频完成
-        
-        Args:
-            task_id: 任务ID
-            tts_queue: 异步队列，从中获取TTS完成的批次
-            audio_file_path: 音频文件路径
-            video_download_task: 视频下载任务引用
-            data_fetcher: DataFetcher服务实例
-            path_manager: 路径管理器
-            duration_aligner: 时长对齐器
-            timestamp_adjuster: 时间戳调整器
-            media_mixer: 媒体混合器
-            hls_manager: HLS管理器
-            
-        Returns:
-            Tuple[bool, List[str], int]: (是否成功, 处理的段路径列表, HLS段数量)
-        """
-        start_time = time.time()
-        processed_segment_paths = []
-        added_hls_segments = 0
-        current_audio_time_ms = 0.0
-        failed_batches = 0
-        video_file_path = None  # 延迟获取
-        hls_initialized = False  # HLS管理器初始化标志
-        
-        try:
-            self.logger.info(f"[{task_id}] 并行处理消费者启动 - TTS与视频下载真正并行")
-            
-            while True:
-                try:
-                    # 设置队列获取超时，避免无限等待
-                    queue_item = await asyncio.wait_for(tts_queue.get(), timeout=60.0)
-                    
-                    # 检查任务项类型
-                    if queue_item['type'] == 'complete':
-                        self.logger.info(f"[{task_id}] 并行处理消费者收到完成信号")
-                        break
-                    elif queue_item['type'] == 'error':
-                        error_msg = queue_item.get('message', '未知TTS错误')
-                        self.logger.error(f"[{task_id}] 并行处理消费者收到错误信号: {error_msg}")
-                        return False, processed_segment_paths, added_hls_segments
-                    elif queue_item['type'] == 'batch':
-                        # 处理TTS批次
-                        tts_batch = queue_item['data']
-                        batch_counter = queue_item['batch_counter']
-                        batch_start_time = time.time()
-                        
-                        self.logger.info(
-                            f"[{task_id}] 并行处理消费者开始处理批次 {batch_counter}，"
-                            f"包含 {len(tts_batch)} 个句子，队列大小: {tts_queue.qsize()}"
-                        )
-                        
-                        # 执行并行优化的处理链
-                        batch_result = await self._process_single_batch_parallel(
-                            task_id, tts_batch, batch_counter, current_audio_time_ms,
-                            audio_file_path, video_download_task, data_fetcher, path_manager, 
-                            duration_aligner, timestamp_adjuster, media_mixer, hls_manager,
-                            video_file_path, hls_initialized
-                        )
-                        
-                        batch_duration = time.time() - batch_start_time
-                        
-                        if batch_result and batch_result.get("success"):
-                            added_hls_segments += 1
-                            processed_segment_paths.append(batch_result["segment_path"])
-                            current_audio_time_ms = batch_result["new_time_ms"]
-                            
-                            # 更新状态
-                            if not video_file_path and batch_result.get("video_file_path"):
-                                video_file_path = batch_result["video_file_path"]
-                                self.logger.info(f"[{task_id}] 视频文件路径已获取: {video_file_path}")
-                            
-                            if not hls_initialized and batch_result.get("hls_initialized"):
-                                hls_initialized = True
-                                self.logger.info(f"[{task_id}] HLS管理器已动态初始化")
-                            
-                            self.logger.info(
-                                f"[{task_id}] 并行处理消费者成功完成批次 {batch_counter}，"
-                                f"耗时: {batch_duration:.2f}s，总段数: {added_hls_segments}"
-                            )
-                        else:
-                            failed_batches += 1
-                            self.logger.warning(
-                                f"[{task_id}] 并行处理消费者批次 {batch_counter} 处理失败，"
-                                f"失败批次数: {failed_batches}"
-                            )
-                    
-                    # 清理内存
-                    self._clean_memory()
-                    
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"[{task_id}] 并行处理消费者等待队列超时，检查生产者状态")
-                    # 继续等待
-                    continue
-                except Exception as e:
-                    failed_batches += 1
-                    self.logger.error(f"[{task_id}] 并行处理消费者处理批次异常: {e}", exc_info=True)
-                    # 继续处理下一个批次
-                    continue
-            
-            # 计算性能指标
-            total_duration = time.time() - start_time
-            success_rate = ((added_hls_segments) / (added_hls_segments + failed_batches) * 100) if (added_hls_segments + failed_batches) > 0 else 0
-            
-            self.logger.info(
-                f"[{task_id}] 并行处理消费者完成 - "
-                f"成功段数: {added_hls_segments}, 失败批次: {failed_batches}, "
-                f"成功率: {success_rate:.1f}%, 总耗时: {total_duration:.2f}s"
-            )
-            
-            return True, processed_segment_paths, added_hls_segments
-            
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 并行处理消费者严重异常: {e}", exc_info=True)
-            return False, processed_segment_paths, added_hls_segments
 
-    async def _processing_consumer(self, task_id: str, tts_queue: asyncio.Queue, video_file_path: str, 
-                                 path_manager: PathManager, duration_aligner, timestamp_adjuster, 
-                                 media_mixer, hls_manager) -> Tuple[bool, List[str], int]:
-        """
-        处理消费者协程 - 专门负责后续处理，从队列获取TTS批次进行处理
-        
-        Args:
-            task_id: 任务ID
-            tts_queue: 异步队列，从中获取TTS完成的批次
-            video_file_path: 视频文件路径
-            path_manager: 路径管理器
-            duration_aligner: 时长对齐器
-            timestamp_adjuster: 时间戳调整器
-            media_mixer: 媒体混合器
-            hls_manager: HLS管理器
-            
-        Returns:
-            Tuple[bool, List[str], int]: (是否成功, 处理的段路径列表, HLS段数量)
-        """
-        start_time = time.time()
-        processed_segment_paths = []
-        added_hls_segments = 0
-        current_audio_time_ms = 0.0
-        failed_batches = 0
-        
-        try:
-            self.logger.info(f"[{task_id}] 处理消费者启动")
-            
-            while True:
-                try:
-                    # 设置队列获取超时，避免无限等待
-                    queue_item = await asyncio.wait_for(tts_queue.get(), timeout=60.0)
-                    
-                    # 检查任务项类型
-                    if queue_item['type'] == 'complete':
-                        self.logger.info(f"[{task_id}] 处理消费者收到完成信号")
-                        break
-                    elif queue_item['type'] == 'error':
-                        error_msg = queue_item.get('message', '未知TTS错误')
-                        self.logger.error(f"[{task_id}] 处理消费者收到错误信号: {error_msg}")
-                        return False, processed_segment_paths, added_hls_segments
-                    elif queue_item['type'] == 'batch':
-                        # 处理TTS批次
-                        tts_batch = queue_item['data']
-                        batch_counter = queue_item['batch_counter']
-                        batch_start_time = time.time()
-                        
-                        self.logger.info(
-                            f"[{task_id}] 处理消费者开始处理批次 {batch_counter}，"
-                            f"包含 {len(tts_batch)} 个句子，队列大小: {tts_queue.qsize()}"
-                        )
-                        
-                        # 执行后续处理链
-                        batch_result = await self._process_single_batch(
-                            task_id, tts_batch, batch_counter, current_audio_time_ms,
-                            video_file_path, path_manager, duration_aligner, timestamp_adjuster, 
-                            media_mixer, hls_manager
-                        )
-                        
-                        batch_duration = time.time() - batch_start_time
-                        
-                        if batch_result:
-                            added_hls_segments += 1
-                            processed_segment_paths.append(batch_result["segment_path"])
-                            current_audio_time_ms = batch_result["new_time_ms"]
-                            self.logger.info(
-                                f"[{task_id}] 处理消费者成功完成批次 {batch_counter}，"
-                                f"耗时: {batch_duration:.2f}s，总段数: {added_hls_segments}"
-                            )
-                        else:
-                            failed_batches += 1
-                            self.logger.warning(
-                                f"[{task_id}] 处理消费者批次 {batch_counter} 处理失败，"
-                                f"失败批次数: {failed_batches}"
-                            )
-                    
-                    # 清理内存
-                    self._clean_memory()
-                    
-                except asyncio.TimeoutError:
-                    self.logger.warning(f"[{task_id}] 处理消费者等待队列超时，检查生产者状态")
-                    # 继续等待
-                    continue
-                except Exception as e:
-                    failed_batches += 1
-                    self.logger.error(f"[{task_id}] 处理消费者处理批次异常: {e}", exc_info=True)
-                    # 继续处理下一个批次
-                    continue
-            
-            # 计算性能指标
-            total_duration = time.time() - start_time
-            success_rate = ((added_hls_segments) / (added_hls_segments + failed_batches) * 100) if (added_hls_segments + failed_batches) > 0 else 0
-            
-            self.logger.info(
-                f"[{task_id}] 处理消费者完成 - "
-                f"成功段数: {added_hls_segments}, 失败批次: {failed_batches}, "
-                f"成功率: {success_rate:.1f}%, 总耗时: {total_duration:.2f}s"
-            )
-            
-            return True, processed_segment_paths, added_hls_segments
-            
-        except Exception as e:
-            self.logger.error(f"[{task_id}] 处理消费者严重异常: {e}", exc_info=True)
-            return False, processed_segment_paths, added_hls_segments
