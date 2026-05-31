@@ -5,11 +5,13 @@ maintain as a public OSS project.
 
 ## v0.1.0 - Public Baseline
 
+Completed as the first public OSS maintenance baseline:
+
 - Add public README, license, security policy, contribution guide, and issue templates.
 - Add lightweight CI for syntax/compile checks.
 - Document the Cloudflare D1/R2 data contract.
 - Document IndexTTS checkpoint setup and third-party license boundaries.
-- Tag the first public release once the setup path is reproducible.
+- Tag the first public release with explicit pre-1.0 stability notes.
 
 ## v0.2.0 - Testable Core
 
