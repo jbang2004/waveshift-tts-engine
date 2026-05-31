@@ -1,0 +1,23 @@
+WaveShift TTS Engine
+Copyright 2026 jbang2004
+
+This product includes software developed by third parties.
+
+IndexTTS
+--------
+This repository vendors IndexTTS inference code under models/IndexTTS/.
+The vendored IndexTTS source includes its own Apache-2.0 license and model
+license files:
+
+- models/IndexTTS/LICENSE
+- models/IndexTTS/INDEX_MODEL_LICENSE
+- models/IndexTTS/DISCLAIMER
+
+Large model checkpoints are not intended to be committed to this repository.
+Download and use model weights only under the upstream model provider terms.
+
+Other Dependencies
+------------------
+Runtime dependencies are listed in requirements.txt and retain their respective
+licenses. Users who redistribute packaged builds should review transitive
+dependency licenses for their distribution format.
